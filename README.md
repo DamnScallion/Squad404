@@ -1,20 +1,25 @@
 # 🔥Squad404-Berrijam-Jam2024
 A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 
+
+
+
 ## 🚀Setting Up the Python Environment
 
-##### Step 1: Install Python 3.11 (Version 3.11.8 Recommended)
 
+##### Step 1: Install Python 3.11 (Version 3.11.8 Recommended)
 Ensure your laptop has Python 3.11 installed. 
 You can download it from the official Python website (https://www.python.org/downloads/release/python-3118).
 OR
 Install it with Anaconda-Navigator.
+
 
 ##### Step 2: Clone the repository
 Open your laptop terminal and locate the path to somewhere you like, then run the following command
 ```
 git clone https://github.com/DamnScallion/Squad404-Berrijam-Jam2024.git
 ```
+
 
 ##### Step 3: Create a Python Virtual Environment
 1. Open a terminal in VScode and navigate to your project folder.
@@ -54,7 +59,55 @@ git clone https://github.com/DamnScallion/Squad404-Berrijam-Jam2024.git
    deactivate
    ```
 ##### Important Note: You will need to repeat 4 and 6, to activate and deactivate the virtual environment, each time you work on the project.
-   
-   
 
 
+
+
+## 👻Git Sample Usage:
+
+
+Pull updated source code from remote branch MAIN and merge it with your local branch code
+```
+git pull origin main
+```
+
+Add all locally changed files ready for commit
+```
+git add .
+```
+
+Save all changed files as a checkpoint ready for push
+```
+git commit -m 'feature: add a new feature to prototypical model'
+```
+
+Push these changed files to a remote repository at branch MAIN
+```
+git push origin main
+```
+
+
+
+
+## 👽Other Useful Commands:
+
+
+Git clone:
+```
+git clone <https://name-of-the-repository-link>
+```
+
+Creating a new branch:
+```
+git branch BRANCH-NAME
+```
+
+Viewing branches:
+```
+git branch or git branch --list
+```
+
+Deleting a branch:
+```
+git branch -d BRANCH-NAME
+```
