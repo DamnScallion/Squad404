@@ -51,12 +51,12 @@ git clone https://github.com/DamnScallion/Squad404.git
    ```
    deactivate
    ```
-### Important Note: You will need to repeat 4 and 6, to activate and deactivate the virtual environment, each time you work on the project.
+###❗️Important Note: You will need to repeat 4 and 6, to activate and deactivate the virtual environment, each time you work on the project.
 
 &nbsp;
 
 # 👻Git Sample Usage:
-Pull updated source code from remote branch MAIN and merge it with your local branch code
+Pull updated source code from remote branch MAIN and merge it with your local branch code (❗️Note: Always pull remote source before coding your work)
 ```
 git pull origin main
 ```
