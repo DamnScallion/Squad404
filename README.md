@@ -1,4 +1,4 @@
-# 🔥Squad404-Berrijam-Jam2024
+# 🔥Squad404
 A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 
 &nbsp;
@@ -12,7 +12,7 @@ Install it with Anaconda-Navigator.
 ### Step 2: Clone the repository
 Open your laptop terminal and locate the path to somewhere you like, then run the following command
 ```
-git clone https://github.com/DamnScallion/Squad404-Berrijam-Jam2024.git
+git clone https://github.com/DamnScallion/Squad404.git
 ```
 ### Step 3: Create a Python Virtual Environment
 1. Open a terminal in VScode and navigate to your project folder.
@@ -22,30 +22,30 @@ git clone https://github.com/DamnScallion/Squad404-Berrijam-Jam2024.git
    python3 -m venv /path/to/project    # macOS
    python -m venv C:\path\to\project   # Windows
    ```
-   For example, your current project under path /Desktop/Squad404-Berrijam-Jam2024 would be:
+   For example, your current project under path /Desktop/Squad404 would be:
    ```
-   python3 -m venv ~/Desktop/Squad404-Berrijam-Jam2024   # macOS
-   python -m venv C:\Desktop\Squad404-Berrijam-Jam2024   # Windows
+   python3 -m venv ~/Desktop/Squad404   # macOS
+   python -m venv C:\Desktop\Squad404   # Windows
    ```
 4. Activate the virtual environment using.
    ```
    source /path/to/project/bin/activate      # macOS
    C:\path\to\project\Scripts\activate.bat   # Windows
    ```
-   For example, your current project under path /Desktop/Squad404-Berrijam-Jam2024 would be:
+   For example, your current project under path /Desktop/Squad404 would be:
    ```
-   source ~/Desktop/Squad404-Berrijam-Jam2024/bin/activate     # macOS
-   C:\Desktop\Squad404-Berrijam-Jam2024\Scripts\activate.bat   # Windows
+   source ~/Desktop/Squad404/bin/activate     # macOS
+   C:\Desktop\Squad404\Scripts\activate.bat   # Windows
    ```
 5. Install the listed packages within the virtual environment.
    ```
    pip3 install -r /path/to/project/requirements.txt    # macOS
    pip install -r C:\path\to\project\requirements.txt   # Windows
    ```
-   For example, your current project under path /Desktop/Squad404-Berrijam-Jam2024 would be:
+   For example, your current project under path /Desktop/Squad404 would be:
    ```
-   pip3 install -r ~/Desktop/Squad404-Berrijam-Jam2024/requirements.txt   # macOS
-   pip install C:\Desktop\Squad404-Berrijam-Jam2024\requirements.txt      # Windows
+   pip3 install -r ~/Desktop/Squad404/requirements.txt   # macOS
+   pip install C:\Desktop\Squad404\requirements.txt      # Windows
    ```
 6. Once you've finished working on the project, you can deactivate the virtual environment by simply executing:
    ```
