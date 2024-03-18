@@ -1,7 +1,11 @@
 # 🔥Squad404-Berrijam-Jam2024
+
 &nbsp;
+
 A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
+
 &nbsp;
+
 &nbsp;
 
 # 🚀Setting Up the Python Environment
