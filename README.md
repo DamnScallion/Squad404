@@ -1,9 +1,10 @@
 # 🔥Squad404-Berrijam-Jam2024
+&nbsp;
 A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 &nbsp;
 &nbsp;
-&nbsp;
-## 🚀Setting Up the Python Environment
+
+# 🚀Setting Up the Python Environment
 &nbsp;
 ##### Step 1: Install Python 3.11 (Version 3.11.8 Recommended)
 Ensure your laptop has Python 3.11 installed. 
