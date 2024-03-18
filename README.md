@@ -18,11 +18,9 @@ git clone https://github.com/DamnScallion/Squad404.git
 1. Open a terminal in VScode and navigate to your project folder.
 2. Make sure you set Python 3.11 as the environment for your current VSCode workspace.
 3. Run the following command to create a virtual environment named `venv`.
-   macOS: ```python3 -m venv /path/to/project```
-   Windows: ```python -m venv C:\path\to\project```
    ```
-   python3 -m venv /path/to/project    # macOS
-   python -m venv C:\path\to\project   # Windows
+   python3 -m venv /path/to/project/venv    # macOS
+   python -m venv C:\path\to\project\venv   # Windows
    ```
    For example, your current project under path /Documents/Dev/Squad404 would be:
    ```
