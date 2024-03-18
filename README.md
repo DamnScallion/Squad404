@@ -18,36 +18,38 @@ git clone https://github.com/DamnScallion/Squad404.git
 1. Open a terminal in VScode and navigate to your project folder.
 2. Make sure you set Python 3.11 as the environment for your current VSCode workspace.
 3. Run the following command to create a virtual environment named `venv`.
+   macOS: ```python3 -m venv /path/to/project```
+   Windows: ```python -m venv C:\path\to\project```
    ```
    python3 -m venv /path/to/project    # macOS
    python -m venv C:\path\to\project   # Windows
    ```
-   For example, your current project under path /Desktop/Squad404 would be:
+   For example, your current project under path /Documents/Dev/Squad404 would be:
    ```
-   python3 -m venv ~/Desktop/Squad404   # macOS
-   python -m venv C:\Desktop\Squad404   # Windows
+   python3 -m venv ~/Documents/Dev/Squad404/venv   # macOS
+   python -m venv C:\Documents\Dev\Squad404/venv   # Windows
    ```
-4. Activate the virtual environment using.
+5. Activate the virtual environment using.
    ```
    source /path/to/project/bin/activate      # macOS
    C:\path\to\project\Scripts\activate.bat   # Windows
    ```
-   For example, your current project under path /Desktop/Squad404 would be:
+   For example, your current project under path /Documents/Dev/Squad404 would be:
    ```
-   source ~/Desktop/Squad404/bin/activate     # macOS
-   C:\Desktop\Squad404\Scripts\activate.bat   # Windows
+   source ~/Documents/Dev/Squad404/bin/activate     # macOS
+   C:\Documents\Dev\Squad404\Scripts\activate.bat   # Windows
    ```
-5. Install the listed packages within the virtual environment.
+6. Install the listed packages within the virtual environment.
    ```
    pip3 install -r /path/to/project/requirements.txt    # macOS
    pip install -r C:\path\to\project\requirements.txt   # Windows
    ```
-   For example, your current project under path /Desktop/Squad404 would be:
+   For example, your current project under path /Documents/Dev/Squad404 would be:
    ```
-   pip3 install -r ~/Desktop/Squad404/requirements.txt   # macOS
-   pip install C:\Desktop\Squad404\requirements.txt      # Windows
+   pip3 install -r ~/Documents/Dev/Squad404/requirements.txt   # macOS
+   pip install C:\Documents\Dev\Squad404\requirements.txt      # Windows
    ```
-6. Once you've finished working on the project, you can deactivate the virtual environment by simply executing:
+7. Once you've finished working on the project, you can deactivate the virtual environment by simply executing:
    ```
    deactivate
    ```
