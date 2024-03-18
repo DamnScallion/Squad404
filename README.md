@@ -1,27 +1,19 @@
 # 🔥Squad404-Berrijam-Jam2024
-
-&nbsp;
-
 A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 
 &nbsp;
 
-&nbsp;
-
 # 🚀Setting Up the Python Environment
-&nbsp;
 ##### Step 1: Install Python 3.11 (Version 3.11.8 Recommended)
 Ensure your laptop has Python 3.11 installed. 
 You can download it from the official Python website (https://www.python.org/downloads/release/python-3118).
 OR
 Install it with Anaconda-Navigator.
-&nbsp;
 ##### Step 2: Clone the repository
 Open your laptop terminal and locate the path to somewhere you like, then run the following command
 ```
 git clone https://github.com/DamnScallion/Squad404-Berrijam-Jam2024.git
 ```
-&nbsp;
 ##### Step 3: Create a Python Virtual Environment
 1. Open a terminal in VScode and navigate to your project folder.
 2. Make sure you set Python 3.11 as the environment for your current VSCode workspace.
@@ -60,11 +52,10 @@ git clone https://github.com/DamnScallion/Squad404-Berrijam-Jam2024.git
    deactivate
    ```
 ##### Important Note: You will need to repeat 4 and 6, to activate and deactivate the virtual environment, each time you work on the project.
+
 &nbsp;
-&nbsp;
-&nbsp;
-## 👻Git Sample Usage:
-&nbsp;
+
+# 👻Git Sample Usage:
 Pull updated source code from remote branch MAIN and merge it with your local branch code
 ```
 git pull origin main
@@ -81,11 +72,10 @@ Push these changed files to a remote repository at branch MAIN
 ```
 git push origin main
 ```
+
 &nbsp;
-&nbsp;
-&nbsp;
-## 👽Other Useful Commands:
-&nbsp;
+
+# 👽Other Useful Commands:
 Git clone:
 ```
 git clone <https://name-of-the-repository-link>
@@ -98,7 +88,6 @@ Viewing branches:
 ```
 git branch or git branch --list
 ```
-
 Deleting a branch:
 ```
 git branch -d BRANCH-NAME
