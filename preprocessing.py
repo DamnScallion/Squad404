@@ -1,6 +1,7 @@
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
 
 # 假设 df 是包含图片文件名和标签的 DataFrame
 df = pd.read_csv('NeedsRespray/Labels-NeedsRespray-2024-03-26.csv')
@@ -27,28 +28,36 @@ train_generator = datagen.flow_from_dataframe(
     class_mode='raw',
     target_size=(150, 150),  # 图片目标大小
     batch_size=32,
-    save_to_dir='augmented_images',  # 指定保存增强图片的目录
-    save_prefix='aug_',  # 保存的图片名前缀
-    save_format='jpeg'  # 保存的图片格式
 )
 
-saved_images_labels = []
+save_dir = 'augmented_images/'
 
-import os
+# 检查目录是否存在，如果不存在，则创建
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
 
-save_dir = 'augmented_images'  # 指定保存增强图片的目录
+
+# 初始化一个列表来收集文件名和标签
+image_label_pairs = []
 
 for i in range(5):  # 假设我们想要迭代5次生成器
-    imgs, labels = next(train_generator)  # 这会生成并保存下一批图片
+    imgs, labels = next(train_generator)  # 生成一批图像和标签
+    for j, (img, label) in enumerate(zip(imgs, labels)):
+        # 构建文件名，包括批次号、图像索引和标签
+        filename = f"aug_{i}_{j}.png"
+        filepath = os.path.join(save_dir, filename)
+        
+        # 保存图像
+        plt.imsave(filepath, img)
+        
+        # 将文件名和标签添加到列表
+        image_label_pairs.append({'filename': filename, 'label': label})
 
-    # 对于每个标签，记录文件名和标签
-    for index, label in enumerate(labels):
-        # 构建增强后的图片文件名
-        filename = f"aug_{i}_{index}.jpeg"  # 根据实际保存逻辑调整格式
-        saved_images_labels.append({'Filename': filename, 'Label': label})
-
-df_saved_labels = pd.DataFrame(saved_images_labels)
+# 将收集到的文件名和标签转换为 DataFrame
+df_image_labels = pd.DataFrame(image_label_pairs)
 
 # 保存 DataFrame 到 CSV 文件
-labels_csv_path = os.path.join(save_dir, 'augmented_images_labels.csv')
-df_saved_labels.to_csv(labels_csv_path, index=False)
+csv_filepath = os.path.join(save_dir, 'image_labels.csv')
+df_image_labels.to_csv(csv_filepath, index=False)
+
+print(f"Image labels saved to {csv_filepath}")
