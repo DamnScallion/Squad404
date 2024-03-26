@@ -44,7 +44,7 @@ for i in range(5):  # 假设我们想要迭代5次生成器
     imgs, labels = next(train_generator)  # 生成一批图像和标签
     for j, (img, label) in enumerate(zip(imgs, labels)):
         # 构建文件名，包括批次号、图像索引和标签
-        filename = f"aug_{i}_{j}_label_{label}.png"
+        filename = f"aug_{i}_{j}.png"
         filepath = os.path.join(save_dir, filename)
         
         # 保存图像
