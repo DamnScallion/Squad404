@@ -56,23 +56,26 @@ git clone https://github.com/DamnScallion/Squad404.git
 &nbsp;
 
 # 👻Git Sample Usage:
-Pull updated source code from remote branch MAIN and merge it with your local branch code
-(❗️Note: Always pull remote source before coding your work)
-```
-git pull origin main
-```
-Add all locally changed files ready for commit
-```
-git add .
-```
-Save all changed files as a checkpoint ready for push
-```
-git commit -m 'feature: add a new feature to prototypical model'
-```
-Push these changed files to a remote repository at branch MAIN
-```
-git push origin main
-```
+1. Create your new branch
+   ```
+   git checkout -b BranchName
+   ```
+2. (❗️Note: Always run this command before coding on your branch) Pull updated source code from remote branch MAIN and merge it with your branch code
+   ```
+   git pull origin main
+   ```
+3. Add all locally changed files ready for commit
+   ```
+   git add .
+   ```
+4. Save all changed files as a checkpoint ready for push
+   ```
+   git commit -m 'feature: add a new feature to prototypical model'
+   ```
+5. Push these changed files to a remote repository at branch MAIN
+   ```
+   git push origin main
+   ```
 
 &nbsp;
 
@@ -80,10 +83,6 @@ git push origin main
 Git clone:
 ```
 git clone <https://name-of-the-repository-link>
-```
-Creating a new branch:
-```
-git branch BRANCH-NAME
 ```
 Viewing branches:
 ```
