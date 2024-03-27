@@ -58,7 +58,7 @@ git clone https://github.com/DamnScallion/Squad404.git
 # 👻Git Sample Usage:
 1. Create your new branch
    ```
-   git checkout -b BranchName
+   git checkout -b YourBranch
    ```
 2. (❗️Note: Always run this command before coding on your branch) Pull updated source code from remote branch MAIN and merge it with your branch code
    ```
@@ -72,9 +72,13 @@ git clone https://github.com/DamnScallion/Squad404.git
    ```
    git commit -m 'feature: add a new feature to prototypical model'
    ```
-5. Push these changed files to a remote repository at branch MAIN
+5. Push these changed files to a remote repository at YourBranch
    ```
-   git push origin main
+   git push
+   ```
+   If you encounter a message 'fatal: The current branch YourBranch has no upstream branch.', you can run the following command
+   ```
+   git push -set-upstream YourBranch
    ```
 
 &nbsp;
