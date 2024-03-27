@@ -44,23 +44,27 @@ git clone https://github.com/DamnScallion/Squad404.git
 &nbsp;
 
 # 👻Git Sample Usage:
-1. Create your new branch
+Step 1. Syncing all remote branch
    ```
-   git checkout -b YourBranch
+   git fetch --all
    ```
-2. (❗️Note: Always run this command before coding on your branch) Pull updated source code from remote branch MAIN and merge it with your branch code
+Step 2. (❗️Note: Always run this command before coding on your branch) Pull updated source code from remote branch MAIN and merge it with your branch code
    ```
    git pull origin main
    ```
-3. Add all locally changed files ready for commit
+Step 3. Create your new branch
+   ```
+   git checkout -b YourBranch
+   ```
+Step 4. Add all locally changed files ready for commit
    ```
    git add .
    ```
-4. Save all changed files as a checkpoint ready for push
+Step 5. Save all changed files as a checkpoint ready for push
    ```
    git commit -m 'feature: add a new feature to prototypical model'
    ```
-5. Push these changed files to a remote repository at YourBranch
+Step 6. Push these changed files to a remote repository at YourBranch
    ```
    git push
    ```
@@ -68,6 +72,9 @@ git clone https://github.com/DamnScallion/Squad404.git
    ```
    git push -set-upstream YourBranch
    ```
+Step 7. Go to our GitHub Repo and create a Pull Request. If you reviewed your code and it had no conflict with the 'main' branch, then you can merge it into 'main'.
+
+### ⚠️Important note: Repeat Step 1 and Step 2 if you have been inactive in the project for a while, or your branch is way out to date.
 
 &nbsp;
 
@@ -79,6 +86,10 @@ git clone <https://name-of-the-repository-link>
 Viewing branches:
 ```
 git branch or git branch --list
+```
+Switching branch:
+```
+git checkout ANOTHER-BRANCH
 ```
 Deleting a branch:
 ```
