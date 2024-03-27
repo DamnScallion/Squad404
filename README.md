@@ -1,9 +1,14 @@
-# 🔥Squad404
+# 🔥Squad404🚀
 A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 
 &nbsp;
 
-# 🚀Setting Up the Python Environment
+# 📊Dataset
+Link: https://drive.google.com/drive/folders/1Gqdcd-It2OeAGCFR4U80SJJ7nMBD5kE9
+
+&nbsp;
+
+# ⚙️Setting Up the Python Environment
 ### Step 1: Install Python 3.11 (Version 3.11.8 Recommended)
 Ensure your laptop has Python 3.11 installed. 
 You can download it from the official Python website (https://www.python.org/downloads/release/python-3118).
@@ -18,40 +23,23 @@ git clone https://github.com/DamnScallion/Squad404.git
 1. Open a terminal in VScode and navigate to your project folder.
 2. Make sure you set Python 3.11 as the environment for your current VSCode workspace.
 3. Run the following command to create a virtual environment named `venv`.
-   ```
-   python3 -m venv /path/to/project/venv    # macOS
-   python -m venv C:\path\to\project\venv   # Windows
-   ```
    For example, your current project under path /Documents/Dev/Squad404 would be:
    ```
    python3 -m venv ~/Documents/Dev/Squad404/venv   # macOS
    python -m venv C:\Documents\Dev\Squad404/venv   # Windows
    ```
-5. Activate the virtual environment using.
-   ```
-   source /path/to/project/bin/activate      # macOS
-   C:\path\to\project\Scripts\activate.bat   # Windows
-   ```
+4. Activate the virtual environment using.
    For example, your current project under path /Documents/Dev/Squad404 would be:
    ```
    source ~/Documents/Dev/Squad404/bin/activate     # macOS
-   C:\Documents\Dev\Squad404\Scripts\activate.bat   # Windows
+   source C:\Documents\Dev\Squad404\Scripts\activate.bat   # Windows
    ```
-6. Install the listed packages within the virtual environment.
-   ```
-   pip3 install -r /path/to/project/requirements.txt    # macOS
-   pip install -r C:\path\to\project\requirements.txt   # Windows
-   ```
+5. Install the listed packages within the virtual environment.
    For example, your current project under path /Documents/Dev/Squad404 would be:
    ```
    pip3 install -r ~/Documents/Dev/Squad404/requirements.txt   # macOS
-   pip install C:\Documents\Dev\Squad404\requirements.txt      # Windows
+   pip install -r C:\Documents\Dev\Squad404\requirements.txt      # Windows
    ```
-7. Once you've finished working on the project, you can deactivate the virtual environment by simply executing:
-   ```
-   deactivate
-   ```
-### Important Note: You will need to repeat 4 and 6, to activate and deactivate the virtual environment, each time you work on the project.
 
 &nbsp;
 
@@ -96,3 +84,22 @@ Deleting a branch:
 ```
 git branch -d BRANCH-NAME
 ```
+
+&nbsp;
+
+# 🛠️Packages Management:
+
+1. In case you need to install any new package to the project.
+   For example, install opencv-python in your local virtual environment. Run this command in your terminal:
+   ```
+   pip install opencv-python
+   ```
+2. Then run this command to freeze all virtual environment installed packages:
+   ```
+   pip freeze -r requirements.txt
+   ```
+   Then use the Git tool to commit and push your requirements.txt to our GitHub Repo. So everyone can share the up-to-date packages.
+3. This command can keep all your Python packages up to date in your local virtual environment.
+   ```
+   pip install -r requirements.txt
+   ```
