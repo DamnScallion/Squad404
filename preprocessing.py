@@ -20,13 +20,12 @@ datagen = ImageDataGenerator(
     cval=0
 )
 
-img_generator = datagen.flow_from_dataframe(
+train_generator = datagen.flow_from_dataframe(
     dataframe=df,
     directory='NeedsRespray/images',
     x_col='Filename',
     y_col='Needs Respray',
     class_mode='raw',
-    target_size=(150, 150),  # img size
     batch_size=32,
     shuffle=False,      # do not shuffle while each iteration generate augmented data
 )
