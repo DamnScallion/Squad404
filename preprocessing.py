@@ -16,10 +16,11 @@ datagen = ImageDataGenerator(
     shear_range=0.2,
     zoom_range=0.2,
     horizontal_flip=True,
-    fill_mode='nearest'
+    fill_mode='constant',
+    cval=0
 )
 
-train_generator = datagen.flow_from_dataframe(
+img_generator = datagen.flow_from_dataframe(
     dataframe=df,
     directory='NeedsRespray/images',
     x_col='Filename',
