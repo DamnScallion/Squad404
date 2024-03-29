@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 # read csv file and scaled label to 1, 0
 df = pd.read_csv('NeedsRespray/Labels-NeedsRespray-2024-03-26.csv')
-df['Needs Respray'] = df['Needs Respray'].map({'Yes': 1, 'No': 0})  
+df['Needs Respray'] = df['Needs Respray'].map({'Yes': '1', 'No': '0'})  
 
 
 datagen = ImageDataGenerator(
@@ -16,7 +16,8 @@ datagen = ImageDataGenerator(
     shear_range=0.2,
     zoom_range=0.2,
     horizontal_flip=True,
-    fill_mode='nearest'
+    vertical_flip=True,
+    fill_mode='constant'
 )
 
 train_generator = datagen.flow_from_dataframe(
@@ -25,7 +26,7 @@ train_generator = datagen.flow_from_dataframe(
     x_col='Filename',
     y_col='Needs Respray',
     class_mode='raw',
-    target_size=(150, 150),  # img size
+    target_size=(224, 224),  # img size
     batch_size=32,
     shuffle=False,      # do not shuffle while each iteration generate augmented data
 )
@@ -37,7 +38,7 @@ if not os.path.exists(save_dir):
 
 image_label_pairs = []
 
-for i in range(5):  
+for i in range(8):  
     imgs, labels = next(train_generator)  
     for j, (img, label) in enumerate(zip(imgs, labels)):
         filename = f"aug_{i}_{j}.png"
