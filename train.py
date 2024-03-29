@@ -1,7 +1,16 @@
 import argparse
 import os
 from typing import Any
-
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.preprocessing.image import img_to_array
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from tensorflow.keras.models import Model
 from PIL import Image
 
 from common import load_image_labels, load_single_image, save_model
@@ -47,8 +56,49 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     # TODO: Implement your logic to train a problem specific model here
     # Along the way you might want to save training stats, logs, etc in the output_dir
     # The output from train can be one or more model files that will be saved in save_model function.
-    model = None
-    raise RuntimeError("train() is not implemented.")
+    
+    # Convert images and labels to np arrays
+    images_np = np.array([img_to_array(image.resize((224, 224))) for image in images])
+    labels_np = np.array(labels).astype(int)
+    
+    # Creating image data generator to perform on the fly augmentation
+    datagen = ImageDataGenerator(
+        rescale=1./255,
+        rotation_range=20,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        vertical_flip=True,
+        fill_mode='constant'
+    )    
+    
+    train_generator = datagen.flow(
+        x=images_np,
+        y=labels_np,
+        batch_size=16,
+        shuffle=True,
+    )
+
+    # Using MobileNetV2 base model 
+    base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+    base_model.trainable = False # Freeze the base_model
+    
+    #TODO: REPLACE BLOCK BELOW WITH PROTOTYPICAL NETWORK LAYER
+    #=====================================
+    x = base_model.output
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(1024, activation='relu')(x)
+    predictions = Dense(1, activation='sigmoid')(x)
+    #=====================================
+    
+    
+    
+    model = Model(inputs=base_model.input, outputs=predictions)
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.fit(train_generator, epochs=100)
+
     return model
 
 
@@ -69,11 +119,14 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
     """
 
     # load pre-trained models or resources at this stage.
-    load_train_resources()
+    # load_train_resources()
 
     # load label file
     labels_file_path = os.path.join(train_input_dir, train_labels_file_name)
     df_labels = load_image_labels(labels_file_path)
+    # Adding missing row in csv file 
+    df_labels.loc[11] = {'Filename': 'paver weeds - 63.png', 'Needs Respray': 'Yes'}
+    df_labels['Needs Respray'] = df_labels['Needs Respray'].map({'Yes': '1', 'No': '0'}) 
 
     # load in images and labels
     train_images = []
@@ -95,6 +148,7 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
             print(f"Error loading {index}: {filename} due to {ex}")
     print(f"Loaded {len(train_labels)} training images and labels")
 
+            
     # Create the output directory and don't error if it already exists.
     os.makedirs(train_output_dir, exist_ok=True)
 
