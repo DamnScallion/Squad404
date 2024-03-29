@@ -26,7 +26,7 @@ train_generator = datagen.flow_from_dataframe(
     x_col='Filename',
     y_col='Needs Respray',
     class_mode='raw',
-    target_size=(224, 224),  # img size
+    target_size=(150, 150),  # img size
     batch_size=32,
     shuffle=False,      # do not shuffle while each iteration generate augmented data
 )
