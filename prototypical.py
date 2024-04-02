@@ -9,6 +9,9 @@ from torchvision import transforms, models
 from torchvision.models import mobilenet_v2
 import torch.optim as optim
 
+import matplotlib.pyplot as plt
+
+
 class ImageDataset(Dataset):
     def __init__(self, csv_file, img_dir, transform=None):
         self.img_labels = pd.read_csv(csv_file)
@@ -20,11 +23,12 @@ class ImageDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-        image = Image.open(img_path).convert('RGB')
+        image = Image.open(img_path).convert("RGB")
         label = torch.tensor(int(self.img_labels.iloc[idx, 1]))
         if self.transform:
             image = self.transform(image)
         return image, label
+
 
 class PrototypicalNetwork(nn.Module):
     def __init__(self):
@@ -42,8 +46,34 @@ class PrototypicalNetwork(nn.Module):
         x = self.fc(x)
         return x
 
+
+def plot_training_results(losses, accuracies):
+    epochs = range(1, len(losses) + 1)
+
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, losses, label="Training Loss")
+    plt.title("Training Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, accuracies, label="Training Accuracy")
+    plt.title("Training Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
 def train(model, train_loader, optimizer, epochs=10):
     criterion = nn.CrossEntropyLoss()
+    losses = []
+    accuracies = []
     for epoch in range(epochs):
         model.train()
         total_loss = 0
@@ -61,17 +91,27 @@ def train(model, train_loader, optimizer, epochs=10):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-        print(f'Epoch {epoch+1}, Loss: {total_loss / len(train_loader)}, Accuracy: {correct / total}')
+        epoch_loss = total_loss / len(train_loader)
+        epoch_accuracy = correct / total
+        losses.append(epoch_loss)
+        accuracies.append(epoch_accuracy)
+
+        print(f"Epoch {epoch+1}, Loss: {total_loss / len(train_loader)}, Accuracy: {correct / total}")
+
+    return losses, accuracies
+
 
 # Setup data loader
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-])
+transform = transforms.Compose(
+    [
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+    ]
+)
 
 # Update these paths
-csv_file = 'augmented_images/image_labels.csv'
-img_dir = 'augmented_images/'
+csv_file = "augmented_images/image_labels.csv"
+img_dir = "augmented_images/"
 
 dataset = ImageDataset(csv_file=csv_file, img_dir=img_dir, transform=transform)
 train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
@@ -81,4 +121,7 @@ model = PrototypicalNetwork().to(torch.device("cuda" if torch.cuda.is_available(
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Start training
-train(model, train_loader, optimizer, epochs=20)
+losses, accuracies = train(model, train_loader, optimizer, epochs=20)
+
+# Plot the training results
+plot_training_results(losses, accuracies)
