@@ -114,3 +114,17 @@ git branch -d BRANCH-NAME
    ```
    pip install -r requirements.txt
    ```
+
+&nbsp;
+
+# 🔧Setting up Git LFS (Git Large File Storage)
+1. Install Git LFS: If you haven't already installed Git LFS, you can download it from https://git-lfs.github.com/. After downloading, run the installation.
+2. Initialize Git LFS in Your Repository: Navigate to your local repository in your terminal and run the following command:
+   ```
+   git lfs install
+   ```
+3. Track Large Files with Git LFS: Before adding and committing your large files, you need to track all .keras files, you can run:
+   ```
+   git lfs track "*.keras"
+   ```
+4. Git add, commit and push your code to the repo.
