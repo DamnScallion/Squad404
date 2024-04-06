@@ -10,6 +10,8 @@ from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.preprocessing.image import img_to_array
+from keras.regularizers import l2
+from tensorflow.keras.layers import Dense, Dropout, Flatten, Input, Reshape
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 from PIL import Image
@@ -48,19 +50,107 @@ def create_data_augmentation_generator(images_np, labels_np):
     datagen = ImageDataGenerator(
         rescale=1./255,
         preprocessing_function=add_random_noise,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        zoom_range=0.1,
         horizontal_flip=True,
         vertical_flip=True,
-        brightness_range=(0.8, 1),
+        brightness_range=(0.8, 1.2),
         fill_mode='constant'
     )
     
     return datagen.flow(
         x=images_np,
         y=labels_np,
-        batch_size=16
+        batch_size=64
     )
 
+class ChannelAttention(tf.keras.layers.Layer):
+    def __init__(self, filters, ratio):
+        super(ChannelAttention, self).__init__()
+        self.filters = filters
+        self.ratio = ratio
 
+    def build(self, input_shape):
+        self.shared_layer_one = tf.keras.layers.Dense(
+            self.filters//self.ratio,
+            activation='relu', kernel_initializer='he_normal', 
+            use_bias=True, 
+            bias_initializer='zeros'
+        )
+        self.shared_layer_two = tf.keras.layers.Dense(
+            self.filters,
+            kernel_initializer='he_normal',
+            use_bias=True,
+            bias_initializer='zeros'
+        )
+
+    def call(self, inputs):
+        # AvgPool
+        avg_pool = tf.keras.layers.GlobalAveragePooling2D()(inputs)
+        avg_pool = self.shared_layer_one(avg_pool)
+        avg_pool = self.shared_layer_two(avg_pool)
+        # MaxPool
+        max_pool = tf.keras.layers.GlobalMaxPooling2D()(inputs)
+        max_pool = tf.keras.layers.Reshape((1,1,self.filters))(max_pool)
+        max_pool = self.shared_layer_one(max_pool)
+        max_pool = self.shared_layer_two(max_pool)
+        attention = tf.keras.layers.Add()([avg_pool,max_pool])
+        attention = tf.keras.layers.Activation('sigmoid')(attention)
+        return tf.keras.layers.Multiply()([inputs, attention])
+#Code from https://github.com/EscVM/EscVM_YT/blob/master/Notebooks/0%20-%20TF2.X%20Tutorials/tf_2_visual_attention.ipynb
+class SpatialAttention(tf.keras.layers.Layer):
+    def __init__(self, kernel_size):
+        super(SpatialAttention, self).__init__()
+        self.kernel_size = kernel_size
+
+    def build(self, input_shape):
+        self.conv2d = tf.keras.layers.Conv2D(
+            filters = 1,
+            kernel_size = self.kernel_size,
+            strides = 1,
+            padding = 'same',
+            activation = 'sigmoid',
+            kernel_initializer = 'he_normal',
+            use_bias = False,
+        )
+
+    def call(self, inputs):
+        # AvgPool
+        avg_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.mean(x, axis=3, keepdims=True))(inputs)
+        # MaxPool
+        max_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.max(x, axis=3, keepdims=True))(inputs)
+        attention = tf.keras.layers.Concatenate(axis=3)([avg_pool, max_pool])
+        attention = self.conv2d(attention)
+        return tf.keras.layers.multiply([inputs, attention]) 
+    
+    
+class CBAMAttentionMN(keras.models.Model):
+    def __init__(self, input_shape):
+        super(CBAMAttentionMN, self).__init__()
+        #taking base model from MobileNetv2 and freezing layers
+        self.baseModel = MobileNetV2(input_shape=input_shape, include_top=False, weights='imagenet')
+        self.baseModel.trainable = False
+
+        #attention layers
+        self.channel_attention = ChannelAttention(1280, 8)
+        self.spatial_attention = SpatialAttention(7)
+        # fully connected layers with dropout added
+        self.flatten = Flatten()
+        self.dense1 = Dense(256, activation='relu', kernel_regularizer=l2(0.01))
+        self.dropout = Dropout(0.3)
+        self.dense2 = Dense(1, activation='sigmoid')
+
+    
+    def call(self, inputs):
+        x = self.baseModel(inputs)
+        x = self.channel_attention(x)
+        x = self.spatial_attention(x)
+        x = self.flatten(x)
+        x = self.dense1(x)
+        x = self.dropout(x)
+        output = self.dense2(x)
+        return output
 def create_model(base):
     """
     Creates a model based on a given base pretrained CNN architecture.
@@ -134,8 +224,11 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     k = 5
     kf = StratifiedKFold(n_splits=k, shuffle=True)
     
+    for train_index, val_index in kf.split(images_np, labels_np):
+        print(f"train: {train_index}, val: {val_index}")
+    
     # Your choice of models to test
-    CNN_models_to_test = [MobileNetV2, ResNet50]
+    CNN_models_to_test = [MobileNetV2]
     
     best_model = None
     best_accuracy = -1
@@ -166,8 +259,21 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
             # Model creation
             model = create_model(CNN_base_model)
             
+            #========================
+            #TESTING FOR MOBILENET WITH CBAM ATTENTION MODEL
+            #Uncomment below and comment 'model = create_model(CNN_base_model)' to use
+            #========================
+            # model = CBAMAttentionMN(input_shape=(224, 224, 3))
+            # x = Input(shape=(224, 224, 3))
+            # model = keras.models.Model(inputs=[x], outputs = model.call(x))
+
+            # lr = 1e-4
+            # model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr), loss='binary_crossentropy', metrics=["accuracy"])
+            #========================
+            
+            
             # Training
-            history = model.fit(train_generator, validation_data=val_generator, epochs=5)
+            history = model.fit(train_generator, validation_data=val_generator, epochs=10)
             
             # Evaluation
             val_accuracy = np.mean(history.history['val_accuracy'])
