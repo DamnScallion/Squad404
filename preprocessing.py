@@ -2,31 +2,47 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+import numpy as np
+
+def add_random_noise(image):
+    salt_vs_pepper = 0.5
+    amount = 0.004
+    num_pepper = np.ceil(amount * image.size * (1. - salt_vs_pepper))
+    
+    # Add pepper noise
+    coords = [np.random.randint(0, i - 1, int(num_pepper)) for i in image.shape]
+    image[coords[0], coords[1], :] = 0
+    return image
+
 
 # read csv file and scaled label to 1, 0
-df = pd.read_csv('NeedsRespray/Labels-NeedsRespray-2024-03-26.csv')
-df['Needs Respray'] = df['Needs Respray'].map({'Yes': '1', 'No': '0'})  
-
+# df = pd.read_csv('Data - Needs Respray - 2024-03-26/Labels-NeedsRespray-2024-03-26.csv')
+# df['Needs Respray'] = df['Needs Respray'].map({'Yes': '1', 'No': '0'})  
+# df = pd.read_csv('Data - Is Epic Intro 2024-03-25/Labels-IsEpicIntro-2024-03-25.csv')
+# df['Is Epic'] = df['Is Epic'].map({'Yes': '1', 'No': '0'})  
+df = pd.read_csv('Data - Is GenAI - 2024-03-25/Labels-IsGenAI-2024-03-25.csv')
+df['Is GenAI'] = df['Is GenAI'].map({'Yes': '1', 'No': '0'})  
 
 datagen = ImageDataGenerator(
     rescale=1./255,
-    rotation_range=20,
-    width_shift_range=0.2,
-    height_shift_range=0.2,
-    shear_range=0.2,
-    zoom_range=0.2,
     horizontal_flip=True,
     vertical_flip=True,
-    fill_mode='constant'
+    fill_mode='constant',
+    brightness_range=(0.8, 1),
+    preprocessing_function = add_random_noise
 )
 
 train_generator = datagen.flow_from_dataframe(
     dataframe=df,
-    directory='NeedsRespray/images',
+    # directory='Data - Needs Respray - 2024-03-26',
+    # directory='Data - Is Epic Intro 2024-03-25',
+    directory='Data - Is GenAI - 2024-03-25',
     x_col='Filename',
-    y_col='Needs Respray',
+    # y_col='Needs Respray',
+    # y_col='Is Epic',
+    y_col='Is GenAI',
     class_mode='raw',
-    target_size=(150, 150),  # img size
+    target_size=(224, 224),  # img size
     batch_size=32,
     shuffle=False,      # do not shuffle while each iteration generate augmented data
 )
