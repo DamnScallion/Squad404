@@ -1,3 +1,8 @@
+########################################################################################################################
+# NOTE: No need to run preprocessing.py, unless you want to test it. 
+# If u did, remember to remove the generate folder 'augmented_images' before pushing your code to the repo.
+########################################################################################################################
+
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import pandas as pd
 import os
@@ -17,11 +22,11 @@ def add_random_noise(image):
 
 # read csv file and scaled label to 1, 0
 # df = pd.read_csv('Data - Needs Respray - 2024-03-26/Labels-NeedsRespray-2024-03-26.csv')
-# df['Needs Respray'] = df['Needs Respray'].map({'Yes': '1', 'No': '0'})  
+# df['Needs Respray'] = df['Needs Respray'].map({'Yes': '1', 'No': '0'})
 # df = pd.read_csv('Data - Is Epic Intro 2024-03-25/Labels-IsEpicIntro-2024-03-25.csv')
 # df['Is Epic'] = df['Is Epic'].map({'Yes': '1', 'No': '0'})  
 df = pd.read_csv('Data - Is GenAI - 2024-03-25/Labels-IsGenAI-2024-03-25.csv')
-df['Is GenAI'] = df['Is GenAI'].map({'Yes': '1', 'No': '0'})  
+df['Is GenAI'] = df['Is GenAI'].map({'Yes': '1', 'No': '0'})
 
 datagen = ImageDataGenerator(
     rescale=1./255,
@@ -47,7 +52,7 @@ train_generator = datagen.flow_from_dataframe(
     shuffle=False,      # do not shuffle while each iteration generate augmented data
 )
 
-save_dir = 'augmented_images/'
+save_dir = 'resources/augmented_data/'
 
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
