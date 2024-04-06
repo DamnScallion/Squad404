@@ -7,15 +7,89 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.preprocessing.image import img_to_array
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 from PIL import Image
+from sklearn.model_selection import StratifiedKFold
 
 from common import load_image_labels, load_single_image, save_model
 
+########################################################################################################################
+# NOTE: Helper function
+########################################################################################################################
+def add_random_noise(image):
+    """
+    Adds random Salt Pepper noise to an image.
+    
+    :param image: Input image.
+    :return: Image with added Salt Pepper noise.
+    """
+    salt_vs_pepper = 0.5
+    amount = 0.004
+    num_pepper = np.ceil(amount * image.size * (1. - salt_vs_pepper))
+    
+    # Add pepper noise
+    coords = [np.random.randint(0, i - 1, int(num_pepper)) for i in image.shape]
+    image[coords[0], coords[1], :] = 0
+    return image
 
+
+def create_data_augmentation_generator(images_np, labels_np):
+    """
+    Creates a data generator with on-the-fly data augmentation.
+    
+    :param images_np: Numpy array of images.
+    :param labels_np: Numpy array of labels corresponding to the images.
+    :return: A data generator yielding batches of augmented images and labels.
+    """
+    datagen = ImageDataGenerator(
+        rescale=1./255,
+        preprocessing_function=add_random_noise,
+        horizontal_flip=True,
+        vertical_flip=True,
+        brightness_range=(0.8, 1),
+        fill_mode='constant'
+    )
+    
+    return datagen.flow(
+        x=images_np,
+        y=labels_np,
+        batch_size=16
+    )
+
+
+def create_model(base):
+    """
+    Creates a model based on a given base pretrained CNN architecture.
+
+    This function initializes a pretrained CNN without its top layer, appends custom layers on top,
+    and compiles the model with a binary crossentropy loss and adam optimizer. The base model is frozen to
+    prevent its weights from being updated during training.
+
+    :param base: A function reference to a pretrained model class from keras.applications (e.g., MobileNetV2, ResNet50).
+    :return: A compiled keras Model instance ready for training.
+    """
+    base_model = base(input_shape=(224, 224, 3), include_top=False)
+    base_model.trainable = False  # Freeze the base model
+    
+    # Append custom layers on top of the base model
+    x = base_model.output
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(1024, activation='relu')(x)
+    predictions = Dense(1, activation='sigmoid')(x)
+    
+    # Create and compile the model
+    model = Model(inputs=base_model.input, outputs=predictions)
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    
+    return model
+
+
+########################################################################################################################
+# NOTE: Template code
 ########################################################################################################################
 
 def parse_args():
@@ -48,58 +122,68 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     """
     Trains a classification model using the training images and corresponding labels.
 
-    :param images: the list of image (or array data)
-    :param labels: the list of training labels (str or 0,1)
-    :param output_dir: the directory to write logs, stats, etc to along the way
-    :return: model: model file(s) trained.
+    :param images: the list of images (PIL Image format).
+    :param labels: the list of training labels (str or 0,1).
+    :param output_dir: the directory to write logs, stats, etc., along the way.
+    :return: model: the trained model.
     """
-    # TODO: Implement your logic to train a problem specific model here
-    # Along the way you might want to save training stats, logs, etc in the output_dir
-    # The output from train can be one or more model files that will be saved in save_model function.
-    
-    # Convert images and labels to np arrays
+    # Convert images and labels to numpy arrays
     images_np = np.array([img_to_array(image.resize((224, 224))) for image in images])
     labels_np = np.array(labels).astype(int)
     
-    # Creating image data generator to perform on the fly augmentation
-    datagen = ImageDataGenerator(
-        rescale=1./255,
-        rotation_range=20,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        shear_range=0.2,
-        zoom_range=0.2,
-        horizontal_flip=True,
-        vertical_flip=True,
-        fill_mode='constant'
-    )    
+    k = 5
+    kf = StratifiedKFold(n_splits=k, shuffle=True)
     
-    train_generator = datagen.flow(
-        x=images_np,
-        y=labels_np,
-        batch_size=16,
-        shuffle=True,
-    )
+    # Your choice of models to test
+    CNN_models_to_test = [MobileNetV2, ResNet50]
+    
+    best_model = None
+    best_accuracy = -1
 
-    # Using MobileNetV2 base model 
-    base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-    base_model.trainable = False # Freeze the base_model
+    # Create a non-augmented data generator for validation data
+    validation_datagen = ImageDataGenerator(rescale=1./255)
     
-    #TODO: REPLACE BLOCK BELOW WITH PROTOTYPICAL NETWORK LAYER
-    #=====================================
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    x = Dense(1024, activation='relu')(x)
-    predictions = Dense(1, activation='sigmoid')(x)
-    #=====================================
-    
-    
-    
-    model = Model(inputs=base_model.input, outputs=predictions)
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    model.fit(train_generator, epochs=100)
+    CNN_scores = []
 
-    return model
+    for CNN_base_model in CNN_models_to_test:
+        fold_scores_for_CNN = []
+        fold_no = 1
+        for train_index, val_index in kf.split(images_np, labels_np):
+            print(f"Training with {CNN_base_model.__name__}, Fold {fold_no}")
+            X_train, X_val = images_np[train_index], images_np[val_index]
+            y_train, y_val = labels_np[train_index], labels_np[val_index]
+            
+            # Data Augmentation Generator for training data
+            train_generator = create_data_augmentation_generator(X_train, y_train)
+            
+            # Non-augmented data generator for validation data
+            val_generator = validation_datagen.flow(
+                X_val,
+                y_val,
+                batch_size=16,
+            )
+            
+            # Model creation
+            model = create_model(CNN_base_model)
+            
+            # Training
+            history = model.fit(train_generator, validation_data=val_generator, epochs=5)
+            
+            # Evaluation
+            val_accuracy = np.mean(history.history['val_accuracy'])
+            if val_accuracy > best_accuracy:
+                best_accuracy = val_accuracy
+                best_model = model
+            
+            fold_scores_for_CNN.append(model.evaluate(val_generator))
+            fold_no += 1
+        CNN_scores.append(fold_scores_for_CNN)
+    
+    for score in CNN_scores:
+        print(np.mean(score, axis=0))
+    
+    return best_model
+
 
 
 def main(train_input_dir: str, train_labels_file_name: str, target_column_name: str, train_output_dir: str):
@@ -124,9 +208,9 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
     # load label file
     labels_file_path = os.path.join(train_input_dir, train_labels_file_name)
     df_labels = load_image_labels(labels_file_path)
-    # Adding missing row in csv file 
-    df_labels.loc[11] = {'Filename': 'paver weeds - 63.png', 'Needs Respray': 'Yes'}
-    df_labels['Needs Respray'] = df_labels['Needs Respray'].map({'Yes': '1', 'No': '0'}) 
+
+    # Convert labels value to binary
+    df_labels[target_column_name] = df_labels[target_column_name].map({'Yes': '1', 'No': '0'}) 
 
     # load in images and labels
     train_images = []

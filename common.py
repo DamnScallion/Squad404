@@ -3,6 +3,7 @@ from typing import Any
 import pandas as pd
 from PIL import Image
 
+import os
 
 ########################################################################################################################
 # Data Loading functions
@@ -42,6 +43,9 @@ def load_single_image(image_file_path: str) -> Image:
     """
     # Load the image
     image = Image.open(image_file_path)
+
+    # Convert the image to RGB format
+    image = image.convert('RGB')
 
     # The following are examples on how you might manipulate the image.
     # See full documentation on Pillow (PIL): https://pillow.readthedocs.io/en/stable/
@@ -105,7 +109,20 @@ def save_model(model: Any, target: str, output_dir: str):
     :param output_dir: the output directory to same one or more model files.
     """
     # TODO: implement your model saving code here
-    raise RuntimeError("save_model() is not implemented.")
+    # model_dir = os.path.join(output_dir, f'model_{target}')
+    
+    # Check if the directory exists, and if not, create it
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Define the model path with the .keras extension
+    # TensorFlow's SavedModel format will be used based on the file extension
+    model_path = os.path.join(output_dir, 'saved_model.keras')
+
+    # Save the model
+    model.save(model_path)
+    
+    print(f"Model saved to {model_path}")
 
 
 def load_model(trained_model_dir: str, target_column_name: str) -> Any:
