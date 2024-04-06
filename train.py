@@ -16,6 +16,7 @@ from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 from PIL import Image
 from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import f1_score
 
 from common import load_image_labels, load_single_image, save_model
 
@@ -98,6 +99,8 @@ class ChannelAttention(tf.keras.layers.Layer):
         attention = tf.keras.layers.Add()([avg_pool,max_pool])
         attention = tf.keras.layers.Activation('sigmoid')(attention)
         return tf.keras.layers.Multiply()([inputs, attention])
+
+
 #Code from https://github.com/EscVM/EscVM_YT/blob/master/Notebooks/0%20-%20TF2.X%20Tutorials/tf_2_visual_attention.ipynb
 class SpatialAttention(tf.keras.layers.Layer):
     def __init__(self, kernel_size):
@@ -151,6 +154,8 @@ class CBAMAttentionMN(keras.models.Model):
         x = self.dropout(x)
         output = self.dense2(x)
         return output
+
+
 def create_model(base):
     """
     Creates a model based on a given base pretrained CNN architecture.
@@ -228,19 +233,18 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
         print(f"train: {train_index}, val: {val_index}")
     
     # Your choice of models to test
-    CNN_models_to_test = [MobileNetV2]
+    CNN_models_to_test = [MobileNetV2, ResNet50]
     
     best_model = None
-    best_accuracy = -1
+    best_f1_score = -1
+    model_f1_scores = {}
 
     # Create a non-augmented data generator for validation data
     validation_datagen = ImageDataGenerator(rescale=1./255)
-    
-    CNN_scores = []
 
     for CNN_base_model in CNN_models_to_test:
-        fold_scores_for_CNN = []
         fold_no = 1
+        fold_f1_scores = []
         for train_index, val_index in kf.split(images_np, labels_np):
             print(f"Training with {CNN_base_model.__name__}, Fold {fold_no}")
             X_train, X_val = images_np[train_index], images_np[val_index]
@@ -273,20 +277,29 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
             
             
             # Training
-            history = model.fit(train_generator, validation_data=val_generator, epochs=10)
-            
-            # Evaluation
-            val_accuracy = np.mean(history.history['val_accuracy'])
-            if val_accuracy > best_accuracy:
-                best_accuracy = val_accuracy
-                best_model = model
-            
-            fold_scores_for_CNN.append(model.evaluate(val_generator))
+            model.fit(train_generator, validation_data=val_generator, epochs=10)
+
+            # Predict on the validation set
+            val_predictions = model.predict(val_generator)
+            val_predictions = [1 if x > 0.5 else 0 for x in val_predictions]
+
+            # Calculate the F1 score
+            f1 = f1_score(y_val, val_predictions)
+            fold_f1_scores.append(f1)
+
             fold_no += 1
-        CNN_scores.append(fold_scores_for_CNN)
-    
-    for score in CNN_scores:
-        print(np.mean(score, axis=0))
+
+        # Calculate the average F1 score across all folds for the current model
+        avg_f1 = np.mean(fold_f1_scores)
+        model_f1_scores[CNN_base_model.__name__] = avg_f1
+
+        # Update the best model if the current model has a better average F1 score
+        if avg_f1 > best_f1_score:
+            best_f1_score = avg_f1
+            best_model = model
+
+    for model_name, score in model_f1_scores.items():
+        print(f"Average F1 Score for {model_name}: {score}")
     
     return best_model
 
