@@ -1,66 +1,81 @@
-import os
 import pandas as pd
-from PIL import Image
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms, models
-from torchvision.models import mobilenet_v2
-import torch.optim as optim
-
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout
+from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 
+# 准备数据
+csv_file = "resources/augmented_data/image_labels.csv"
+img_dir = "resources/augmented_data/"
 
-class ImageDataset(Dataset):
-    def __init__(self, csv_file, img_dir, transform=None):
-        self.img_labels = pd.read_csv(csv_file)
-        self.img_dir = img_dir
-        self.transform = transform
+# 读取CSV文件
+df = pd.read_csv(csv_file)
 
-    def __len__(self):
-        return len(self.img_labels)
+# 定义数据增强策略
+datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
 
-    def __getitem__(self, idx):
-        img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-        image = Image.open(img_path).convert("RGB")
-        label = torch.tensor(int(self.img_labels.iloc[idx, 1]))
-        if self.transform:
-            image = self.transform(image)
-        return image, label
+# 使用flow_from_dataframe来准备训练数据
+train_generator = datagen.flow_from_dataframe(
+    dataframe=df,
+    directory=img_dir,
+    x_col='filename',
+    y_col='label',
+    target_size=(224, 224),
+    color_mode='rgb',
+    class_mode='raw',
+    batch_size=32,
+    shuffle=True
+)
 
+# 构建模型
+def build_model():
+    base_model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3),
+                                                    include_top=False,
+                                                    weights='imagenet')
+    base_model.trainable = False
 
-class PrototypicalNetwork(nn.Module):
-    def __init__(self):
-        super(PrototypicalNetwork, self).__init__()
-        self.backbone = mobilenet_v2(pretrained=True).features
-        for param in self.backbone.parameters():
-            param.requires_grad = False
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Linear(1280, 2)  # Assuming 2 classes
+    model = Sequential([
+        base_model,
+        GlobalAveragePooling2D(),
+        Dropout(0.02),  # 加入Dropout层，丢弃率设置为0.5
+        Dense(2, activation='softmax')
+    ])
+    return model
 
-    def forward(self, x):
-        x = self.backbone(x)
-        x = self.global_avg_pool(x)
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
-        return x
+model = build_model()
 
+# 编译模型
+model.compile(optimizer=Adam(learning_rate=0.001),
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
 
-def plot_training_results(losses, accuracies):
-    epochs = range(1, len(losses) + 1)
+# 训练模型
+history = model.fit(train_generator, epochs=25)
 
+# 绘制训练结果
+def plot_training_results(history):
     plt.figure(figsize=(12, 6))
 
     plt.subplot(1, 2, 1)
-    plt.plot(epochs, losses, label="Training Loss")
+    plt.plot(history.history['loss'], label="Training Loss")
     plt.title("Training Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.legend()
 
     plt.subplot(1, 2, 2)
-    plt.plot(epochs, accuracies, label="Training Accuracy")
+    plt.plot(history.history['accuracy'], label="Training Accuracy")
     plt.title("Training Accuracy")
     plt.xlabel("Epoch")
     plt.ylabel("Accuracy")
@@ -69,59 +84,4 @@ def plot_training_results(losses, accuracies):
     plt.tight_layout()
     plt.show()
 
-
-def train(model, train_loader, optimizer, epochs=10):
-    criterion = nn.CrossEntropyLoss()
-    losses = []
-    accuracies = []
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0
-        correct = 0
-        total = 0
-        for images, labels in train_loader:
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-        epoch_loss = total_loss / len(train_loader)
-        epoch_accuracy = correct / total
-        losses.append(epoch_loss)
-        accuracies.append(epoch_accuracy)
-
-        print(f"Epoch {epoch+1}, Loss: {total_loss / len(train_loader)}, Accuracy: {correct / total}")
-
-    return losses, accuracies
-
-
-# Setup data loader
-transform = transforms.Compose(
-    [
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-    ]
-)
-
-# Update these paths
-csv_file = "augmented_images/image_labels.csv"
-img_dir = "augmented_images/"
-
-dataset = ImageDataset(csv_file=csv_file, img_dir=img_dir, transform=transform)
-train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
-
-# Initialize the model and optimizer
-model = PrototypicalNetwork().to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-# Start training
-losses, accuracies = train(model, train_loader, optimizer, epochs=20)
-
-# Plot the training results
-plot_training_results(losses, accuracies)
+plot_training_results(history)
