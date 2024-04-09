@@ -202,6 +202,7 @@ def create_model(base):
     x = GlobalAveragePooling2D()(x)
     proto = Dense(1024, activation='relu', name='output2')(x)
     x = Dense(1024, activation='relu')(x)
+    x = Dropout(0.5)(x)
     predictions = Dense(1, activation='sigmoid', name='output')(x)
 
     # Create and compile the model
