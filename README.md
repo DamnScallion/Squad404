@@ -125,6 +125,6 @@ git branch -d BRANCH-NAME
    ```
 3. Track Large Files with Git LFS: Before adding and committing your large files, you need to track all .keras files, you can run:
    ```
-   git lfs track "*.keras"
+   git lfs track "*.pth"
    ```
 4. Git add, commit and push your code to the repo.
