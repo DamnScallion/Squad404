@@ -11,12 +11,14 @@ from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.preprocessing.image import img_to_array
 from keras.regularizers import l2
-from tensorflow.keras.layers import Dense, Dropout, Flatten, Input, Reshape
+from tensorflow.keras.layers import Dense, Dropout, Flatten, Input, Reshape, Lambda
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 from PIL import Image
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import f1_score
+from tensorflow.keras import losses
+from tensorflow.keras import backend as K
 
 from common import load_image_labels, load_single_image, save_model
 
@@ -155,6 +157,31 @@ class CBAMAttentionMN(keras.models.Model):
         output = self.dense2(x)
         return output
 
+def proto_dist(x):
+    x = K.l2_normalize(x)
+    pred_dist = tf.reduce_sum(x ** 2, axis=1, keepdims=True)
+    feature_dist = tf.reduce_sum(x ** 2, axis=1, keepdims=True)
+    dot = tf.matmul(pred_dist, tf.transpose(pred_dist))
+    dist = tf.sqrt(pred_dist + tf.transpose(feature_dist) - 2 * dot)
+    return dist 
+
+def label_matrix(x):
+    shape = tf.shape(x)[0]
+    y = tf.transpose(x)
+    matrix = tf.tile(x, (1, shape))
+    matrix2 = tf.tile(y, (shape, 1))
+    comparison_result = tf.not_equal(matrix, matrix2)
+    return tf.cast(comparison_result, tf.float32)
+
+def ProtoLoss(y_true, y_pred):
+    proto_dists = (proto_dist)(y_pred)
+    label_matrixs = (label_matrix)(y_true)
+    distance_matrix = K.abs(proto_dists - label_matrixs)
+    # Compute the loss value
+    loss = K.mean(distance_matrix, axis=-1)
+
+    return loss
+
 
 def create_model(base):
     """
@@ -168,18 +195,20 @@ def create_model(base):
     :return: A compiled keras Model instance ready for training.
     """
     base_model = base(input_shape=(224, 224, 3), include_top=False)
-    base_model.trainable = False  # Freeze the base model
+    # base_model.trainable = False  # Freeze the base model
     
     # Append custom layers on top of the base model
     x = base_model.output
     x = GlobalAveragePooling2D()(x)
+    proto = Dense(1024, activation='relu', name='output2')(x)
     x = Dense(1024, activation='relu')(x)
-    predictions = Dense(1, activation='sigmoid')(x)
-    
+    x = Dropout(0.5)(x)
+    predictions = Dense(1, activation='sigmoid', name='output')(x)
+
     # Create and compile the model
-    model = Model(inputs=base_model.input, outputs=predictions)
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    
+    model = Model(inputs=base_model.input, outputs=[predictions, proto])
+    #model.compile(optimizer='adam', loss='binary_crossentropy', metrics={'output': ['accuracy']})
+    model.compile(optimizer='adam', loss={'output2': ProtoLoss, 'output': 'binary_crossentropy'}, metrics={'output': ['accuracy']})
     return model
 
 
@@ -280,8 +309,10 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
             model.fit(train_generator, validation_data=val_generator, epochs=10)
 
             # Predict on the validation set
-            val_predictions = model.predict(val_generator)
+            val_predictions = model.predict(val_generator)[0]
+            # print(val_predictions)
             val_predictions = [1 if x > 0.5 else 0 for x in val_predictions]
+
 
             # Calculate the F1 score
             f1 = f1_score(y_val, val_predictions)
