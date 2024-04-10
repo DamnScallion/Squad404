@@ -1,220 +1,165 @@
 import argparse
 import os
 from typing import Any
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.applications.resnet50 import ResNet50
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.preprocessing.image import img_to_array
-from keras.regularizers import l2
-from tensorflow.keras.layers import Dense, Dropout, Flatten, Input, Reshape, Lambda
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-from tensorflow.keras.models import Model
 from PIL import Image
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import f1_score
-from tensorflow.keras import losses
-from tensorflow.keras import backend as K
 
 from common import load_image_labels, load_single_image, save_model
 
+import torch
+from torch import nn, optim
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+from torchvision import models, transforms
+from sklearn.model_selection import train_test_split
+from easyfsl.samplers import TaskSampler
+from easyfsl.utils import plot_images, sliding_average
+from tqdm import tqdm
+
+
 ########################################################################################################################
-# NOTE: Helper function
-########################################################################################################################
-def add_random_noise(image):
-    """
-    Adds random Salt Pepper noise to an image.
+def augment_data(images, labels, augmentations_per_image):
+    augmented_images = []
+    augmented_labels = []
+    augmentations = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(20),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+    ])
     
-    :param image: Input image.
-    :return: Image with added Salt Pepper noise.
-    """
-    salt_vs_pepper = 0.5
-    amount = 0.004
-    num_pepper = np.ceil(amount * image.size * (1. - salt_vs_pepper))
+    for img, label in zip(images, labels):
+        for _ in range(augmentations_per_image):
+            augmented_img = augmentations(img)
+            augmented_images.append(augmented_img)
+            augmented_labels.append(label)
     
-    # Add pepper noise
-    coords = [np.random.randint(0, i - 1, int(num_pepper)) for i in image.shape]
-    image[coords[0], coords[1], :] = 0
-    return image
+    augmented_images.extend(images)
+    augmented_labels.extend(labels)
+    
+    return augmented_images, augmented_labels
 
 
-def create_data_augmentation_generator(images_np, labels_np):
-    """
-    Creates a data generator with on-the-fly data augmentation.
-    
-    :param images_np: Numpy array of images.
-    :param labels_np: Numpy array of labels corresponding to the images.
-    :return: A data generator yielding batches of augmented images and labels.
-    """
-    datagen = ImageDataGenerator(
-        rescale=1./255,
-        preprocessing_function=add_random_noise,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        zoom_range=0.1,
-        horizontal_flip=True,
-        vertical_flip=True,
-        brightness_range=(0.8, 1.2),
-        fill_mode='constant'
-    )
-    
-    return datagen.flow(
-        x=images_np,
-        y=labels_np,
-        batch_size=64
-    )
+class CustomDataset(Dataset):
+    def __init__(self, images, labels, transform=None):
+        self.images = images
+        self.labels = labels
+        self.transform = transform
 
-class ChannelAttention(tf.keras.layers.Layer):
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        label = self.labels[idx]
+        if self.transform:
+            image = self.transform(image)
+        return image, label
+    
+    def get_labels(self):
+        return self.labels
+    
+class ChannelAttention(nn.Module):
     def __init__(self, filters, ratio):
         super(ChannelAttention, self).__init__()
-        self.filters = filters
-        self.ratio = ratio
-
-    def build(self, input_shape):
-        self.shared_layer_one = tf.keras.layers.Dense(
-            self.filters//self.ratio,
-            activation='relu', kernel_initializer='he_normal', 
-            use_bias=True, 
-            bias_initializer='zeros'
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.shared_mlp = nn.Sequential(
+            nn.Linear(filters, filters // ratio, bias=False),
+            nn.ReLU(),
+            nn.Linear(filters // ratio, filters, bias=False)
         )
-        self.shared_layer_two = tf.keras.layers.Dense(
-            self.filters,
-            kernel_initializer='he_normal',
-            use_bias=True,
-            bias_initializer='zeros'
-        )
+        self.sigmoid = nn.Sigmoid()
 
-    def call(self, inputs):
-        # AvgPool
-        avg_pool = tf.keras.layers.GlobalAveragePooling2D()(inputs)
-        avg_pool = self.shared_layer_one(avg_pool)
-        avg_pool = self.shared_layer_two(avg_pool)
-        # MaxPool
-        max_pool = tf.keras.layers.GlobalMaxPooling2D()(inputs)
-        max_pool = tf.keras.layers.Reshape((1,1,self.filters))(max_pool)
-        max_pool = self.shared_layer_one(max_pool)
-        max_pool = self.shared_layer_two(max_pool)
-        attention = tf.keras.layers.Add()([avg_pool,max_pool])
-        attention = tf.keras.layers.Activation('sigmoid')(attention)
-        return tf.keras.layers.Multiply()([inputs, attention])
+    def forward(self, inputs):
+        avg_out = self.shared_mlp(self.avg_pool(inputs).view(inputs.size(0), -1)).view(inputs.size(0), -1, 1, 1)
+        max_out = self.shared_mlp(self.max_pool(inputs).view(inputs.size(0), -1)).view(inputs.size(0), -1, 1, 1)
+        attention = self.sigmoid(avg_out + max_out)
+        return inputs * attention
 
-
-#Code from https://github.com/EscVM/EscVM_YT/blob/master/Notebooks/0%20-%20TF2.X%20Tutorials/tf_2_visual_attention.ipynb
-class SpatialAttention(tf.keras.layers.Layer):
-    def __init__(self, kernel_size):
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7):
         super(SpatialAttention, self).__init__()
-        self.kernel_size = kernel_size
+        assert kernel_size % 2 == 1, "Kernel size must be odd"
+        self.conv2d = nn.Conv2d(2, 1, kernel_size=kernel_size, padding=kernel_size//2, bias=False)
+        self.sigmoid = nn.Sigmoid()
 
-    def build(self, input_shape):
-        self.conv2d = tf.keras.layers.Conv2D(
-            filters = 1,
-            kernel_size = self.kernel_size,
-            strides = 1,
-            padding = 'same',
-            activation = 'sigmoid',
-            kernel_initializer = 'he_normal',
-            use_bias = False,
-        )
+    def forward(self, inputs):
+        avg_out = torch.mean(inputs, dim=1, keepdim=True)
+        max_out, _ = torch.max(inputs, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+        attention = self.sigmoid(self.conv2d(x))
+        return inputs * attention
 
-    def call(self, inputs):
-        # AvgPool
-        avg_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.mean(x, axis=3, keepdims=True))(inputs)
-        # MaxPool
-        max_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.max(x, axis=3, keepdims=True))(inputs)
-        attention = tf.keras.layers.Concatenate(axis=3)([avg_pool, max_pool])
-        attention = self.conv2d(attention)
-        return tf.keras.layers.multiply([inputs, attention]) 
-    
-    
-class CBAMAttentionMN(keras.models.Model):
+class CBAMAttentionMN(nn.Module):
     def __init__(self, input_shape):
         super(CBAMAttentionMN, self).__init__()
-        #taking base model from MobileNetv2 and freezing layers
-        self.baseModel = MobileNetV2(input_shape=input_shape, include_top=False, weights='imagenet')
+        self.baseModel = models.mobilenet_v2(pretrained=True).features
         self.baseModel.trainable = False
 
-        #attention layers
-        self.channel_attention = ChannelAttention(1280, 8)
-        self.spatial_attention = SpatialAttention(7)
-        # fully connected layers with dropout added
-        self.flatten = Flatten()
-        self.dense1 = Dense(256, activation='relu', kernel_regularizer=l2(0.01))
-        self.dropout = Dropout(0.3)
-        self.dense2 = Dense(1, activation='sigmoid')
+        # Assume input channels to channel attention is 1280 because it's the output of MobileNetV2
+        self.channel_attention = ChannelAttention(filters=1280, ratio=8)
+        self.spatial_attention = SpatialAttention(kernel_size=7)
 
-    
-    def call(self, inputs):
+        self.flatten = nn.Flatten()
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)  # Global Avg Pooling
+        self.dense1 = nn.Linear(1280, 256)  # Adjust depending on the output size after pooling
+        self.dropout = nn.Dropout(0.3)
+        self.dense2 = nn.Linear(256, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, inputs):
+        print("inputs", inputs.shape)
         x = self.baseModel(inputs)
+        print("x1", x.shape)
         x = self.channel_attention(x)
+        print("x2", x.shape)
         x = self.spatial_attention(x)
+        print("x3", x.shape)
+        x = self.global_avg_pool(x)
         x = self.flatten(x)
-        x = self.dense1(x)
+        print("x4", x.shape)
+        x = F.relu(self.dense1(x))
+        print("x5", x.shape)
         x = self.dropout(x)
-        output = self.dense2(x)
+        x = self.dense2(x)
+        output = self.sigmoid(x)
         return output
-
-def proto_dist(x):
-    x = K.l2_normalize(x)
-    pred_dist = tf.reduce_sum(x ** 2, axis=1, keepdims=True)
-    feature_dist = tf.reduce_sum(x ** 2, axis=1, keepdims=True)
-    dot = tf.matmul(pred_dist, tf.transpose(pred_dist))
-    dist = tf.sqrt(pred_dist + tf.transpose(feature_dist) - 2 * dot)
-    return dist 
-
-def label_matrix(x):
-    shape = tf.shape(x)[0]
-    y = tf.transpose(x)
-    matrix = tf.tile(x, (1, shape))
-    matrix2 = tf.tile(y, (shape, 1))
-    comparison_result = tf.not_equal(matrix, matrix2)
-    return tf.cast(comparison_result, tf.float32)
-
-def ProtoLoss(y_true, y_pred):
-    proto_dists = (proto_dist)(y_pred)
-    label_matrixs = (label_matrix)(y_true)
-    distance_matrix = K.abs(proto_dists - label_matrixs)
-    # Compute the loss value
-    loss = K.mean(distance_matrix, axis=-1)
-
-    return loss
-
-
-def create_model(base):
-    """
-    Creates a model based on a given base pretrained CNN architecture.
-
-    This function initializes a pretrained CNN without its top layer, appends custom layers on top,
-    and compiles the model with a binary crossentropy loss and adam optimizer. The base model is frozen to
-    prevent its weights from being updated during training.
-
-    :param base: A function reference to a pretrained model class from keras.applications (e.g., MobileNetV2, ResNet50).
-    :return: A compiled keras Model instance ready for training.
-    """
-    base_model = base(input_shape=(224, 224, 3), include_top=False)
-    # base_model.trainable = False  # Freeze the base model
     
-    # Append custom layers on top of the base model
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    proto = Dense(1024, activation='relu', name='output2')(x)
-    x = Dense(1024, activation='relu')(x)
-    x = Dropout(0.5)(x)
-    predictions = Dense(1, activation='sigmoid', name='output')(x)
+    
+# Prototypical network implementation based on https://colab.research.google.com/drive/1TPL2e3v8zcDK00ABqH3R0XXNJtJnLBCd?usp=sharing#scrollTo=UW5Rxifk7Kru
+class Prototypical(nn.Module):
+    #Initialise model with resNet as base CNN and flattening fc layer
+    def __init__(self):
+        super(Prototypical, self).__init__()
+        
+        # Uncomment below to use CBAM attention model
+        # self.baseCNN = CBAMAttentionMN((224, 224))
+        
+        self.baseCNN = models.mobilenet_v2(pretrained=True)
+    def forward(
+        self,
+        support_images: torch.Tensor,
+        support_labels: torch.Tensor,
+        query_images: torch.Tensor,
+    ) -> torch.Tensor:
+        support_features = self.baseCNN.forward(support_images)
+        query_features = self.baseCNN.forward(query_images)
 
-    # Create and compile the model
-    model = Model(inputs=base_model.input, outputs=[predictions, proto])
-    #model.compile(optimizer='adam', loss='binary_crossentropy', metrics={'output': ['accuracy']})
-    model.compile(optimizer='adam', loss={'output2': ProtoLoss, 'output': 'binary_crossentropy'}, metrics={'output': ['accuracy']})
-    return model
+        # Infer the number of different classes from the labels of the support set
+        num_classes = len(torch.unique(support_labels))
+        # Prototype i is the mean of all instances of features corresponding to labels == i
+        prototype = torch.cat([support_features[torch.nonzero(support_labels == label)].mean(0) for label in range(num_classes)])
+
+        # Compute the euclidean distance from queries to prototypes
+        scores = -(torch.cdist(query_features, prototype))
+
+        return scores
 
 
-########################################################################################################################
-# NOTE: Template code
-########################################################################################################################
+
+        
+        
+    
 
 def parse_args():
     """
@@ -238,102 +183,101 @@ def load_train_resources(resource_dir: str = 'resources') -> Any:
     :param resource_dir: the relative directory from train.py where resources are kept.
     :return: TBD
     """
-    raise RuntimeError(
-        "load_train_resources() not implement. If you have no pre-trained models you can comment this out.")
+    # raise RuntimeError(
+    #     "load_train_resources() not implement. If you have no pre-trained models you can comment this out.")
 
 
 def train(images: [Image], labels: [str], output_dir: str) -> Any:
     """
     Trains a classification model using the training images and corresponding labels.
 
-    :param images: the list of images (PIL Image format).
-    :param labels: the list of training labels (str or 0,1).
-    :param output_dir: the directory to write logs, stats, etc., along the way.
-    :return: model: the trained model.
+    :param images: the list of image (or array data)
+    :param labels: the list of training labels (str or 0,1)
+    :param output_dir: the directory to write logs, stats, etc to along the way
+    :return: model: model file(s) trained.
     """
-    # Convert images and labels to numpy arrays
-    images_np = np.array([img_to_array(image.resize((224, 224))) for image in images])
-    labels_np = np.array(labels).astype(int)
+    # TODO: Implement your logic to train a problem specific model here
+    # Along the way you might want to save training stats, logs, etc in the output_dir
+    # The output from train can be one or more model files that will be saved in save_model function.
     
-    k = 5
-    kf = StratifiedKFold(n_splits=k, shuffle=True)
+    # Converting labels to ints
+    labels = [1 if label == "Yes" else 0 for label in labels]
+
+    # Augmenting dataset
+    augmented_images, augmented_labels = augment_data(images, labels, 10)
+
+    # Splitting the dataset
+    X_train, X_test, y_train, y_test = train_test_split(augmented_images, augmented_labels, test_size=0.2, random_state=88)
     
-    for train_index, val_index in kf.split(images_np, labels_np):
-        print(f"train: {train_index}, val: {val_index}")
+    # Defining prototypical parameters
+    N_WAY = 2 # Num classes
+    N_SHOT = 5 # Images per class
+    N_QUERY = 7 # Num query images
+    N_EVALUATION_TASKS = 100
     
-    # Your choice of models to test
-    CNN_models_to_test = [MobileNetV2, ResNet50]
+    # Pre-processing
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    # Loading data
+    train_data = CustomDataset(X_train, y_train, transform=transform)
+    test_data = CustomDataset(X_test, y_test, transform=transform)
+
+    # Creating samples
+    train_sampler = TaskSampler(train_data, N_WAY, N_SHOT, N_QUERY, N_EVALUATION_TASKS)
     
-    best_model = None
-    best_f1_score = -1
-    model_f1_scores = {}
+    train_loader = DataLoader(
+        train_data,
+        batch_sampler=train_sampler,
+        collate_fn=train_sampler.episodic_collate_fn,
+    )
 
-    # Create a non-augmented data generator for validation data
-    validation_datagen = ImageDataGenerator(rescale=1./255)
-
-    for CNN_base_model in CNN_models_to_test:
-        fold_no = 1
-        fold_f1_scores = []
-        for train_index, val_index in kf.split(images_np, labels_np):
-            print(f"Training with {CNN_base_model.__name__}, Fold {fold_no}")
-            X_train, X_val = images_np[train_index], images_np[val_index]
-            y_train, y_val = labels_np[train_index], labels_np[val_index]
-            
-            # Data Augmentation Generator for training data
-            train_generator = create_data_augmentation_generator(X_train, y_train)
-            
-            # Non-augmented data generator for validation data
-            val_generator = validation_datagen.flow(
-                X_val,
-                y_val,
-                batch_size=16,
-            )
-            
-            # Model creation
-            model = create_model(CNN_base_model)
-            
-            #========================
-            #TESTING FOR MOBILENET WITH CBAM ATTENTION MODEL
-            #Uncomment below and comment 'model = create_model(CNN_base_model)' to use
-            #========================
-            # model = CBAMAttentionMN(input_shape=(224, 224, 3))
-            # x = Input(shape=(224, 224, 3))
-            # model = keras.models.Model(inputs=[x], outputs = model.call(x))
-
-            # lr = 1e-4
-            # model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr), loss='binary_crossentropy', metrics=["accuracy"])
-            #========================
-            
-            
-            # Training
-            model.fit(train_generator, validation_data=val_generator, epochs=10)
-
-            # Predict on the validation set
-            val_predictions = model.predict(val_generator)[0]
-            # print(val_predictions)
-            val_predictions = [1 if x > 0.5 else 0 for x in val_predictions]
+    # Initialising model
+    model = Prototypical()
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 
-            # Calculate the F1 score
-            f1 = f1_score(y_val, val_predictions)
-            fold_f1_scores.append(f1)
+    def fit(
+        support_images: torch.Tensor,
+        support_labels: torch.Tensor,
+        query_images: torch.Tensor,
+        query_labels: torch.Tensor,
+    ) -> float:
+        optimizer.zero_grad()
+        classification_scores = model(
+            support_images, support_labels, query_images
+        )
 
-            fold_no += 1
+        loss = criterion(classification_scores, query_labels)
+        loss.backward()
+        optimizer.step()
 
-        # Calculate the average F1 score across all folds for the current model
-        avg_f1 = np.mean(fold_f1_scores)
-        model_f1_scores[CNN_base_model.__name__] = avg_f1
+        return loss.item()
+    log_update_frequency = 10
 
-        # Update the best model if the current model has a better average F1 score
-        if avg_f1 > best_f1_score:
-            best_f1_score = avg_f1
-            best_model = model
-
-    for model_name, score in model_f1_scores.items():
-        print(f"Average F1 Score for {model_name}: {score}")
+    all_loss = []
+    model.train()
     
-    return best_model
+    # This is for showing a progress bar
+    with tqdm(enumerate(train_loader), total=len(train_loader)) as tqdm_train:
+        for episode_index, (
+            support_images,
+            support_labels,
+            query_images,
+            query_labels,
+            _,
+        ) in tqdm_train:
+            loss_value = fit(support_images, support_labels, query_images, query_labels)
+            all_loss.append(loss_value)
 
+            if episode_index % log_update_frequency == 0:
+                tqdm_train.set_postfix(loss=sliding_average(all_loss, log_update_frequency))
+    
+    return model
 
 
 def main(train_input_dir: str, train_labels_file_name: str, target_column_name: str, train_output_dir: str):
@@ -358,9 +302,7 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
     # load label file
     labels_file_path = os.path.join(train_input_dir, train_labels_file_name)
     df_labels = load_image_labels(labels_file_path)
-
-    # Convert labels value to binary
-    df_labels[target_column_name] = df_labels[target_column_name].map({'Yes': '1', 'No': '0'}) 
+    print(df_labels)
 
     # load in images and labels
     train_images = []
@@ -382,7 +324,6 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
             print(f"Error loading {index}: {filename} due to {ex}")
     print(f"Loaded {len(train_labels)} training images and labels")
 
-            
     # Create the output directory and don't error if it already exists.
     os.makedirs(train_output_dir, exist_ok=True)
 
