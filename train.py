@@ -12,10 +12,15 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import models, transforms
 from sklearn.model_selection import train_test_split
 from easyfsl.samplers import TaskSampler
-from easyfsl.utils import plot_images, sliding_average
+from easyfsl.utils import sliding_average
 from tqdm import tqdm
+from sklearn.metrics import f1_score
+import numpy as np
+from torchvision.models import MobileNet_V2_Weights
 
 
+########################################################################################################################
+# NOTE: Model Implementation
 ########################################################################################################################
 def augment_data(images, labels, augmentations_per_image):
     augmented_images = []
@@ -93,7 +98,8 @@ class SpatialAttention(nn.Module):
 class CBAMAttentionMN(nn.Module):
     def __init__(self, input_shape):
         super(CBAMAttentionMN, self).__init__()
-        self.baseModel = models.mobilenet_v2(pretrained=True).features
+        # self.baseModel = models.mobilenet_v2(pretrained=True).features
+        self.baseModel = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1).features
         self.baseModel.trainable = False
 
         # Assume input channels to channel attention is 1280 because it's the output of MobileNetV2
@@ -135,7 +141,8 @@ class Prototypical(nn.Module):
         # Uncomment below to use CBAM attention model
         # self.baseCNN = CBAMAttentionMN((224, 224))
         
-        self.baseCNN = models.mobilenet_v2(pretrained=True)
+        # self.baseCNN = models.mobilenet_v2(pretrained=True)
+        self.baseCNN = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
     def forward(
         self,
         support_images: torch.Tensor,
@@ -156,11 +163,37 @@ class Prototypical(nn.Module):
         return scores
 
 
+def episodic_evaluate(model, data_loader, criterion):
+    model.eval()
+    total_loss = 0.0
+    f1_scores = []
+
+    with torch.no_grad():
+        for _, (support_images, support_labels, query_images, query_labels, _) in enumerate(data_loader):
+            # Forward pass through the model
+            scores = model(support_images, support_labels, query_images)
+
+            # Compute loss
+            loss = criterion(scores, query_labels)
+            total_loss += loss.item()
+
+            # Convert scores to predictions
+            _, preds = torch.max(scores, 1)
+
+            # Compute F1 score
+            f1 = f1_score(query_labels.cpu().numpy(), preds.cpu().numpy(), average='binary')
+            f1_scores.append(f1)
+
+    avg_loss = total_loss / len(data_loader)
+    avg_f1 = np.mean(f1_scores)
+    return avg_loss, avg_f1
+
+
 
         
-        
-    
-
+########################################################################################################################
+# NOTE: Template Code
+########################################################################################################################
 def parse_args():
     """
     Helper function to parse command line arguments
@@ -256,10 +289,21 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
         loss.backward()
         optimizer.step()
 
-        return loss.item()
+        # Convert scores to predictions
+        _, preds = torch.max(classification_scores, 1)
+        query_labels_np = query_labels.cpu().numpy()
+        preds_np = preds.cpu().numpy()
+
+        # Calculate F1 score
+        f1 = f1_score(query_labels_np, preds_np, average='binary')
+
+        return loss.item(), f1
+    
+
     log_update_frequency = 10
 
     all_loss = []
+    all_f1 = []
     model.train()
     
     # This is for showing a progress bar
@@ -271,11 +315,35 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
             query_labels,
             _,
         ) in tqdm_train:
-            loss_value = fit(support_images, support_labels, query_images, query_labels)
+            loss_value, f1 = fit(support_images, support_labels, query_images, query_labels)
             all_loss.append(loss_value)
+            all_f1.append(f1)
 
             if episode_index % log_update_frequency == 0:
-                tqdm_train.set_postfix(loss=sliding_average(all_loss, log_update_frequency))
+                tqdm_train.set_postfix(
+                    loss=sliding_average(all_loss, log_update_frequency),
+                    f1=np.mean(all_f1[-log_update_frequency:])
+                )
+    
+    # Defining testing prototypical parameters
+    N_WAY_TEST = 2 # Num classes
+    N_SHOT_TEST = 2 # Images per class
+    N_QUERY_TEST = 2 # Num query images
+    N_EVALUATION_TASKS_TEST = 10
+
+    # NOTE: Make sure Number of test_sampler at least has (N_SHOT_TEST + N_QUERY_TEST) samples
+
+    # Setup for episodic evaluation on test data
+    test_sampler = TaskSampler(test_data, N_WAY_TEST, N_SHOT_TEST, N_QUERY_TEST, N_EVALUATION_TASKS_TEST)
+    test_loader = DataLoader(
+        test_data,
+        batch_sampler=test_sampler,
+        collate_fn=test_sampler.episodic_collate_fn,
+    )
+
+    # Episodic evaluation
+    test_loss, test_f1 = episodic_evaluate(model, test_loader, criterion)
+    print(f"Test Loss: {test_loss}, Test F1 Score: {test_f1}")
     
     return model
 

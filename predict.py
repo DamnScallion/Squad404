@@ -4,6 +4,8 @@ from typing import Any
 
 import pandas as pd
 from PIL import Image
+from torchvision import transforms
+import torch
 
 from common import load_model, load_predict_image_names, load_single_image
 
@@ -29,7 +31,7 @@ def parse_args():
     return args
 
 
-def predict(model: Any, image: Image) -> str:
+def predict(model: torch.nn.Module, image: Image) -> str:
     """
     Generate a prediction for a single image using the model, returning a label of 'Yes' or 'No'
 
@@ -39,9 +41,36 @@ def predict(model: Any, image: Image) -> str:
     :param image: the image file to predict.
     :return: the label ('Yes' or 'No)
     """
-    predicted_label = 'No'
-    # TODO: Implement your logic to generate prediction for an image here.
-    raise RuntimeError("predict() is not implemented.")
+    # predicted_label = 'No'
+    # # TODO: Implement your logic to generate prediction for an image here.
+    # raise RuntimeError("predict() is not implemented.")
+    # return predicted_label
+
+
+    # Transform the input image
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),  # Resize to the size expected by the model
+        transforms.ToTensor(),  # Convert the image to a tensor
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize (values from ImageNet)
+    ])
+    
+    # Apply the transformations to the image
+    image_tensor = transform(image).unsqueeze(0)  # Add a batch dimension
+    
+    # Ensure the model is in evaluation mode
+    model.eval()
+    
+    # Disable gradient computation for inference
+    with torch.no_grad():
+        outputs = model(image_tensor)
+        
+        # Assuming the model outputs raw scores (logits) for binary classification
+        # Apply sigmoid to convert to probabilities
+        probs = torch.sigmoid(outputs.squeeze())
+        
+        # Determine the predicted class based on a threshold of 0.5
+        predicted_label = 'Yes' if probs.item() > 0.5 else 'No'
+    
     return predicted_label
 
 
