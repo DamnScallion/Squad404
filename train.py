@@ -331,7 +331,7 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
     model = train(train_images, train_labels, train_output_dir)
 
     # save model
-    save_model(model, target_column_name, train_output_dir)
+    # save_model(model, target_column_name, train_output_dir)
 
 
 if __name__ == '__main__':
