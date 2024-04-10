@@ -24,7 +24,6 @@ def augment_data(images, labels, augmentations_per_image):
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(20),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        # Add more transformations as needed
     ])
     
     for img, label in zip(images, labels):
@@ -33,11 +32,11 @@ def augment_data(images, labels, augmentations_per_image):
             augmented_images.append(augmented_img)
             augmented_labels.append(label)
     
-    # Don't forget to include the original images too
     augmented_images.extend(images)
     augmented_labels.extend(labels)
     
     return augmented_images, augmented_labels
+
 
 class CustomDataset(Dataset):
     def __init__(self, images, labels, transform=None):
@@ -56,14 +55,15 @@ class CustomDataset(Dataset):
         return image, label
     
     def get_labels(self):
-        # Return the labels of all samples in the dataset
         return self.labels
 
     
-class PrototypicalNetworks(nn.Module):
-    def __init__(self, backbone: nn.Module):
-        super(PrototypicalNetworks, self).__init__()
-        self.backbone = backbone
+class Prototypical(nn.Module):
+    #Initialise model with resNet as base CNN and flattening fc layer
+    def __init__(self):
+        super(Prototypical, self).__init__()
+        self.baseCNN = models.mobilenet_v2(pretrained=True)
+        self.fc = nn.Flatten()
 
     def forward(
         self,
@@ -71,28 +71,17 @@ class PrototypicalNetworks(nn.Module):
         support_labels: torch.Tensor,
         query_images: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Predict query labels using labeled support images.
-        """
-        # Extract the features of support and query images
-        z_support = self.backbone.forward(support_images)
-        z_query = self.backbone.forward(query_images)
+        support_features = self.baseCNN.forward(support_images)
+        query_features = self.baseCNN.forward(query_images)
 
         # Infer the number of different classes from the labels of the support set
-        n_way = len(torch.unique(support_labels))
+        num_classes = len(torch.unique(support_labels))
         # Prototype i is the mean of all instances of features corresponding to labels == i
-        z_proto = torch.cat(
-            [
-                z_support[torch.nonzero(support_labels == label)].mean(0)
-                for label in range(n_way)
-            ]
-        )
+        prototype = torch.cat([support_features[torch.nonzero(support_labels == label)].mean(0) for label in range(num_classes)])
 
         # Compute the euclidean distance from queries to prototypes
-        dists = torch.cdist(z_query, z_proto)
+        scores = -(torch.cdist(query_features, prototype))
 
-        # And here is the super complicated operation to transform those distances into classification scores!
-        scores = -dists
         return scores
 
 
@@ -139,60 +128,45 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     # TODO: Implement your logic to train a problem specific model here
     # Along the way you might want to save training stats, logs, etc in the output_dir
     # The output from train can be one or more model files that will be saved in save_model function.
-    print(labels)
+    
+    # Converting labels to ints
     labels = [1 if label == "Yes" else 0 for label in labels]
-    print(labels)
 
+    # Augmenting dataset
     augmented_images, augmented_labels = augment_data(images, labels, 10)
 
+    # Splitting the dataset
     X_train, X_test, y_train, y_test = train_test_split(augmented_images, augmented_labels, test_size=0.2, random_state=88)
     
-    N_WAY = 2 # Number of classes in a task
-    N_SHOT = 5 # Number of images per class in the support set
-    N_QUERY = 7 # Number of images per class in the query set
+    # Defining prototypical parameters
+    N_WAY = 2 # Num classes
+    N_SHOT = 5 # Images per class
+    N_QUERY = 7 # Num query images
     N_EVALUATION_TASKS = 100
     
-    
+    # Pre-processing
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
+    # Loading data
     train_data = CustomDataset(X_train, y_train, transform=transform)
     test_data = CustomDataset(X_test, y_test, transform=transform)
-    print(test_data)
 
-
-    train_sampler = TaskSampler(
-        train_data,
-        n_way=N_WAY,
-        n_shot=N_SHOT,
-        n_query=N_QUERY,
-        n_tasks=N_EVALUATION_TASKS
-    )
+    # Creating samples
+    train_sampler = TaskSampler(train_data, N_WAY, N_SHOT, N_QUERY, N_EVALUATION_TASKS)
     
     train_loader = DataLoader(
         train_data,
         batch_sampler=train_sampler,
-        num_workers=12,
-        pin_memory=True,
         collate_fn=train_sampler.episodic_collate_fn,
     )
-    
-    convolutional_network = models.resnet18(pretrained=True)
-    convolutional_network.fc = nn.Flatten()
 
-    model = PrototypicalNetworks(convolutional_network)
-    (
-        example_support_images,
-        example_support_labels,
-        example_query_images,
-        example_query_labels,
-        example_class_ids,
-    ) = next(iter(train_loader))
-    model.eval()
-    criterion = nn.functional.binary_cross_entropy
+    # Initialising model
+    model = Prototypical()
+    criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 
@@ -216,6 +190,8 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
 
     all_loss = []
     model.train()
+    
+    # This is for showing a progress bar
     with tqdm(enumerate(train_loader), total=len(train_loader)) as tqdm_train:
         for episode_index, (
             support_images,
