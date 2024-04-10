@@ -7,6 +7,7 @@ from common import load_image_labels, load_single_image, save_model
 
 import torch
 from torch import nn, optim
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import models, transforms
 from sklearn.model_selection import train_test_split
@@ -56,15 +57,85 @@ class CustomDataset(Dataset):
     
     def get_labels(self):
         return self.labels
-
     
+class ChannelAttention(nn.Module):
+    def __init__(self, filters, ratio):
+        super(ChannelAttention, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.shared_mlp = nn.Sequential(
+            nn.Linear(filters, filters // ratio, bias=False),
+            nn.ReLU(),
+            nn.Linear(filters // ratio, filters, bias=False)
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, inputs):
+        avg_out = self.shared_mlp(self.avg_pool(inputs).view(inputs.size(0), -1)).view(inputs.size(0), -1, 1, 1)
+        max_out = self.shared_mlp(self.max_pool(inputs).view(inputs.size(0), -1)).view(inputs.size(0), -1, 1, 1)
+        attention = self.sigmoid(avg_out + max_out)
+        return inputs * attention
+
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7):
+        super(SpatialAttention, self).__init__()
+        assert kernel_size % 2 == 1, "Kernel size must be odd"
+        self.conv2d = nn.Conv2d(2, 1, kernel_size=kernel_size, padding=kernel_size//2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, inputs):
+        avg_out = torch.mean(inputs, dim=1, keepdim=True)
+        max_out, _ = torch.max(inputs, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+        attention = self.sigmoid(self.conv2d(x))
+        return inputs * attention
+
+class CBAMAttentionMN(nn.Module):
+    def __init__(self, input_shape):
+        super(CBAMAttentionMN, self).__init__()
+        self.baseModel = models.mobilenet_v2(pretrained=True).features
+        self.baseModel.trainable = False
+
+        # Assume input channels to channel attention is 1280 because it's the output of MobileNetV2
+        self.channel_attention = ChannelAttention(filters=1280, ratio=8)
+        self.spatial_attention = SpatialAttention(kernel_size=7)
+
+        self.flatten = nn.Flatten()
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)  # Global Avg Pooling
+        self.dense1 = nn.Linear(1280, 256)  # Adjust depending on the output size after pooling
+        self.dropout = nn.Dropout(0.3)
+        self.dense2 = nn.Linear(256, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, inputs):
+        print("inputs", inputs.shape)
+        x = self.baseModel(inputs)
+        print("x1", x.shape)
+        x = self.channel_attention(x)
+        print("x2", x.shape)
+        x = self.spatial_attention(x)
+        print("x3", x.shape)
+        x = self.global_avg_pool(x)
+        x = self.flatten(x)
+        print("x4", x.shape)
+        x = F.relu(self.dense1(x))
+        print("x5", x.shape)
+        x = self.dropout(x)
+        x = self.dense2(x)
+        output = self.sigmoid(x)
+        return output
+    
+    
+# Prototypical network implementation based on https://colab.research.google.com/drive/1TPL2e3v8zcDK00ABqH3R0XXNJtJnLBCd?usp=sharing#scrollTo=UW5Rxifk7Kru
 class Prototypical(nn.Module):
     #Initialise model with resNet as base CNN and flattening fc layer
     def __init__(self):
         super(Prototypical, self).__init__()
+        
+        # Uncomment below to use CBAM attention model
+        # self.baseCNN = CBAMAttentionMN((224, 224))
+        
         self.baseCNN = models.mobilenet_v2(pretrained=True)
-        self.fc = nn.Flatten()
-
     def forward(
         self,
         support_images: torch.Tensor,
