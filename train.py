@@ -11,11 +11,12 @@ from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.preprocessing.image import img_to_array
 from keras.regularizers import l2
-from tensorflow.keras.layers import Dense, Dropout, Flatten, Input, Reshape, Lambda
+from tensorflow.keras.layers import Dense, Dropout, Flatten, Input, Reshape, Lambda, TimeDistributed
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Model, Sequential
 from PIL import Image
-from sklearn.model_selection import StratifiedKFold
+from sklearn.utils import shuffle
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.metrics import f1_score
 from tensorflow.keras import losses
 from tensorflow.keras import backend as K
@@ -68,94 +69,94 @@ def create_data_augmentation_generator(images_np, labels_np):
         batch_size=64
     )
 
-class ChannelAttention(tf.keras.layers.Layer):
-    def __init__(self, filters, ratio):
-        super(ChannelAttention, self).__init__()
-        self.filters = filters
-        self.ratio = ratio
+# class ChannelAttention(tf.keras.layers.Layer):
+#     def __init__(self, filters, ratio):
+#         super(ChannelAttention, self).__init__()
+#         self.filters = filters
+#         self.ratio = ratio
 
-    def build(self, input_shape):
-        self.shared_layer_one = tf.keras.layers.Dense(
-            self.filters//self.ratio,
-            activation='relu', kernel_initializer='he_normal', 
-            use_bias=True, 
-            bias_initializer='zeros'
-        )
-        self.shared_layer_two = tf.keras.layers.Dense(
-            self.filters,
-            kernel_initializer='he_normal',
-            use_bias=True,
-            bias_initializer='zeros'
-        )
+#     def build(self, input_shape):
+#         self.shared_layer_one = tf.keras.layers.Dense(
+#             self.filters//self.ratio,
+#             activation='relu', kernel_initializer='he_normal', 
+#             use_bias=True, 
+#             bias_initializer='zeros'
+#         )
+#         self.shared_layer_two = tf.keras.layers.Dense(
+#             self.filters,
+#             kernel_initializer='he_normal',
+#             use_bias=True,
+#             bias_initializer='zeros'
+#         )
 
-    def call(self, inputs):
-        # AvgPool
-        avg_pool = tf.keras.layers.GlobalAveragePooling2D()(inputs)
-        avg_pool = self.shared_layer_one(avg_pool)
-        avg_pool = self.shared_layer_two(avg_pool)
-        # MaxPool
-        max_pool = tf.keras.layers.GlobalMaxPooling2D()(inputs)
-        max_pool = tf.keras.layers.Reshape((1,1,self.filters))(max_pool)
-        max_pool = self.shared_layer_one(max_pool)
-        max_pool = self.shared_layer_two(max_pool)
-        attention = tf.keras.layers.Add()([avg_pool,max_pool])
-        attention = tf.keras.layers.Activation('sigmoid')(attention)
-        return tf.keras.layers.Multiply()([inputs, attention])
+#     def call(self, inputs):
+#         # AvgPool
+#         avg_pool = tf.keras.layers.GlobalAveragePooling2D()(inputs)
+#         avg_pool = self.shared_layer_one(avg_pool)
+#         avg_pool = self.shared_layer_two(avg_pool)
+#         # MaxPool
+#         max_pool = tf.keras.layers.GlobalMaxPooling2D()(inputs)
+#         max_pool = tf.keras.layers.Reshape((1,1,self.filters))(max_pool)
+#         max_pool = self.shared_layer_one(max_pool)
+#         max_pool = self.shared_layer_two(max_pool)
+#         attention = tf.keras.layers.Add()([avg_pool,max_pool])
+#         attention = tf.keras.layers.Activation('sigmoid')(attention)
+#         return tf.keras.layers.Multiply()([inputs, attention])
 
 
-#Code from https://github.com/EscVM/EscVM_YT/blob/master/Notebooks/0%20-%20TF2.X%20Tutorials/tf_2_visual_attention.ipynb
-class SpatialAttention(tf.keras.layers.Layer):
-    def __init__(self, kernel_size):
-        super(SpatialAttention, self).__init__()
-        self.kernel_size = kernel_size
+# #Code from https://github.com/EscVM/EscVM_YT/blob/master/Notebooks/0%20-%20TF2.X%20Tutorials/tf_2_visual_attention.ipynb
+# class SpatialAttention(tf.keras.layers.Layer):
+#     def __init__(self, kernel_size):
+#         super(SpatialAttention, self).__init__()
+#         self.kernel_size = kernel_size
 
-    def build(self, input_shape):
-        self.conv2d = tf.keras.layers.Conv2D(
-            filters = 1,
-            kernel_size = self.kernel_size,
-            strides = 1,
-            padding = 'same',
-            activation = 'sigmoid',
-            kernel_initializer = 'he_normal',
-            use_bias = False,
-        )
+#     def build(self, input_shape):
+#         self.conv2d = tf.keras.layers.Conv2D(
+#             filters = 1,
+#             kernel_size = self.kernel_size,
+#             strides = 1,
+#             padding = 'same',
+#             activation = 'sigmoid',
+#             kernel_initializer = 'he_normal',
+#             use_bias = False,
+#         )
 
-    def call(self, inputs):
-        # AvgPool
-        avg_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.mean(x, axis=3, keepdims=True))(inputs)
-        # MaxPool
-        max_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.max(x, axis=3, keepdims=True))(inputs)
-        attention = tf.keras.layers.Concatenate(axis=3)([avg_pool, max_pool])
-        attention = self.conv2d(attention)
-        return tf.keras.layers.multiply([inputs, attention]) 
+#     def call(self, inputs):
+#         # AvgPool
+#         avg_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.mean(x, axis=3, keepdims=True))(inputs)
+#         # MaxPool
+#         max_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.max(x, axis=3, keepdims=True))(inputs)
+#         attention = tf.keras.layers.Concatenate(axis=3)([avg_pool, max_pool])
+#         attention = self.conv2d(attention)
+#         return tf.keras.layers.multiply([inputs, attention]) 
     
     
-class CBAMAttentionMN(keras.models.Model):
-    def __init__(self, input_shape):
-        super(CBAMAttentionMN, self).__init__()
-        #taking base model from MobileNetv2 and freezing layers
-        self.baseModel = MobileNetV2(input_shape=input_shape, include_top=False, weights='imagenet')
-        self.baseModel.trainable = False
+# class CBAMAttentionMN(keras.models.Model):
+#     def __init__(self, input_shape):
+#         super(CBAMAttentionMN, self).__init__()
+#         #taking base model from MobileNetv2 and freezing layers
+#         self.baseModel = MobileNetV2(input_shape=input_shape, include_top=False, weights='imagenet')
+#         self.baseModel.trainable = False
 
-        #attention layers
-        self.channel_attention = ChannelAttention(1280, 8)
-        self.spatial_attention = SpatialAttention(7)
-        # fully connected layers with dropout added
-        self.flatten = Flatten()
-        self.dense1 = Dense(256, activation='relu', kernel_regularizer=l2(0.01))
-        self.dropout = Dropout(0.3)
-        self.dense2 = Dense(1, activation='sigmoid')
+#         #attention layers
+#         self.channel_attention = ChannelAttention(1280, 8)
+#         self.spatial_attention = SpatialAttention(7)
+#         # fully connected layers with dropout added
+#         self.flatten = Flatten()
+#         self.dense1 = Dense(256, activation='relu', kernel_regularizer=l2(0.01))
+#         self.dropout = Dropout(0.3)
+#         self.dense2 = Dense(1, activation='sigmoid')
 
     
-    def call(self, inputs):
-        x = self.baseModel(inputs)
-        x = self.channel_attention(x)
-        x = self.spatial_attention(x)
-        x = self.flatten(x)
-        x = self.dense1(x)
-        x = self.dropout(x)
-        output = self.dense2(x)
-        return output
+#     def call(self, inputs):
+#         x = self.baseModel(inputs)
+#         x = self.channel_attention(x)
+#         x = self.spatial_attention(x)
+#         x = self.flatten(x)
+#         x = self.dense1(x)
+#         x = self.dropout(x)
+#         output = self.dense2(x)
+#         return output
 
 def proto_dist(x):
     x = K.l2_normalize(x)
@@ -183,7 +184,7 @@ def ProtoLoss(y_true, y_pred):
     return loss
 
 
-def create_model(base):
+def create_CNN(base):
     """
     Creates a model based on a given base pretrained CNN architecture.
 
@@ -201,15 +202,54 @@ def create_model(base):
     x = base_model.output
     x = GlobalAveragePooling2D()(x)
     proto = Dense(1024, activation='relu', name='output2')(x)
-    x = Dense(1024, activation='relu')(x)
-    x = Dropout(0.5)(x)
-    predictions = Dense(1, activation='sigmoid', name='output')(x)
+    return proto
 
-    # Create and compile the model
-    model = Model(inputs=base_model.input, outputs=[predictions, proto])
-    #model.compile(optimizer='adam', loss='binary_crossentropy', metrics={'output': ['accuracy']})
-    model.compile(optimizer='adam', loss={'output2': ProtoLoss, 'output': 'binary_crossentropy'}, metrics={'output': ['accuracy']})
-    return model
+
+def reduce_tensor(x):
+    print("reduce tensor output", (tf.reduce_mean(x, axis=1)))
+    return tf.reduce_mean(x, axis=1)
+
+def reshape_query(x):
+    print("reshqp query", (tf.reshape(x, [-1, tf.shape(x)[-1]])).shape)
+    return tf.reshape(x, [-1, tf.shape(x)[-1]])
+
+
+def prior_dist(x):
+    sample_center, query_feature = x
+    q2 = tf.reduce_sum(query_feature ** 2, axis=1, keepdims=True)
+    s2 = tf.reduce_sum(sample_center ** 2, axis=1, keepdims=True)
+    qdots = tf.matmul(query_feature, tf.transpose(sample_center))
+    return tf.nn.softmax(-(tf.sqrt(q2 + tf.transpose(s2) - 2 * qdots)))
+
+def create_model():
+    base_model = MobileNetV2(input_shape=(224, 224, 3), include_top=False)
+    model = Sequential()
+    model.add(base_model)
+    model.add(GlobalAveragePooling2D()) 
+    model.add(Dense(1024, activation='relu'))
+    
+
+    # Input samples
+    sample = Input((224, 224, 3))
+    print("sample shape", sample)
+    sample_feature = model(sample)
+    print("sample features shape", sample_feature)
+
+    # Input Queries
+    query = Input((224, 224, 3))
+    print("query shape", query)
+    query_feature = model(query)
+    print("query feature shape", query_feature)    
+    
+
+
+    class_center = Lambda(reduce_tensor, output_shape=(None, ))(sample_feature)
+    query_feature = Lambda(reshape_query, output_shape=(None, 1024))(query_feature)
+    pred = Lambda(prior_dist)([class_center, query_feature])
+    combine = Model([sample, query], pred)
+    combine.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['categorical_accuracy'])
+    return combine
+
 
 
 ########################################################################################################################
@@ -252,87 +292,12 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     :return: model: the trained model.
     """
     # Convert images and labels to numpy arrays
+    
     images_np = np.array([img_to_array(image.resize((224, 224))) for image in images])
     labels_np = np.array(labels).astype(int)
     
-    k = 5
-    kf = StratifiedKFold(n_splits=k, shuffle=True)
     
-    for train_index, val_index in kf.split(images_np, labels_np):
-        print(f"train: {train_index}, val: {val_index}")
-    
-    # Your choice of models to test
-    CNN_models_to_test = [MobileNetV2, ResNet50]
-    
-    best_model = None
-    best_f1_score = -1
-    model_f1_scores = {}
 
-    # Create a non-augmented data generator for validation data
-    validation_datagen = ImageDataGenerator(rescale=1./255)
-
-    for CNN_base_model in CNN_models_to_test:
-        fold_no = 1
-        fold_f1_scores = []
-        for train_index, val_index in kf.split(images_np, labels_np):
-            print(f"Training with {CNN_base_model.__name__}, Fold {fold_no}")
-            X_train, X_val = images_np[train_index], images_np[val_index]
-            y_train, y_val = labels_np[train_index], labels_np[val_index]
-            
-            # Data Augmentation Generator for training data
-            train_generator = create_data_augmentation_generator(X_train, y_train)
-            
-            # Non-augmented data generator for validation data
-            val_generator = validation_datagen.flow(
-                X_val,
-                y_val,
-                batch_size=16,
-            )
-            
-            # Model creation
-            model = create_model(CNN_base_model)
-            
-            #========================
-            #TESTING FOR MOBILENET WITH CBAM ATTENTION MODEL
-            #Uncomment below and comment 'model = create_model(CNN_base_model)' to use
-            #========================
-            # model = CBAMAttentionMN(input_shape=(224, 224, 3))
-            # x = Input(shape=(224, 224, 3))
-            # model = keras.models.Model(inputs=[x], outputs = model.call(x))
-
-            # lr = 1e-4
-            # model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr), loss='binary_crossentropy', metrics=["accuracy"])
-            #========================
-            
-            
-            # Training
-            model.fit(train_generator, validation_data=val_generator, epochs=10)
-
-            # Predict on the validation set
-            val_predictions = model.predict(val_generator)[0]
-            # print(val_predictions)
-            val_predictions = [1 if x > 0.5 else 0 for x in val_predictions]
-
-
-            # Calculate the F1 score
-            f1 = f1_score(y_val, val_predictions)
-            fold_f1_scores.append(f1)
-
-            fold_no += 1
-
-        # Calculate the average F1 score across all folds for the current model
-        avg_f1 = np.mean(fold_f1_scores)
-        model_f1_scores[CNN_base_model.__name__] = avg_f1
-
-        # Update the best model if the current model has a better average F1 score
-        if avg_f1 > best_f1_score:
-            best_f1_score = avg_f1
-            best_model = model
-
-    for model_name, score in model_f1_scores.items():
-        print(f"Average F1 Score for {model_name}: {score}")
-    
-    return best_model
 
 
 
