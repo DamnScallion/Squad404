@@ -1,260 +1,105 @@
 import argparse
 import os
 from typing import Any
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.applications.resnet50 import ResNet50
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.preprocessing.image import img_to_array
-from keras.regularizers import l2
-from tensorflow.keras.layers import Dense, Dropout, Flatten, Input, Reshape, Lambda, TimeDistributed
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-from tensorflow.keras.models import Model, Sequential
 from PIL import Image
-from sklearn.utils import shuffle
-from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.metrics import f1_score
-from tensorflow.keras import losses
-from tensorflow.keras import backend as K
 
 from common import load_image_labels, load_single_image, save_model
 
-########################################################################################################################
-# NOTE: Helper function
-########################################################################################################################
-def add_random_noise(image):
-    """
-    Adds random Salt Pepper noise to an image.
-    
-    :param image: Input image.
-    :return: Image with added Salt Pepper noise.
-    """
-    salt_vs_pepper = 0.5
-    amount = 0.004
-    num_pepper = np.ceil(amount * image.size * (1. - salt_vs_pepper))
-    
-    # Add pepper noise
-    coords = [np.random.randint(0, i - 1, int(num_pepper)) for i in image.shape]
-    image[coords[0], coords[1], :] = 0
-    return image
-
-
-def create_data_augmentation_generator(images_np, labels_np):
-    """
-    Creates a data generator with on-the-fly data augmentation.
-    
-    :param images_np: Numpy array of images.
-    :param labels_np: Numpy array of labels corresponding to the images.
-    :return: A data generator yielding batches of augmented images and labels.
-    """
-    datagen = ImageDataGenerator(
-        rescale=1./255,
-        preprocessing_function=add_random_noise,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        zoom_range=0.1,
-        horizontal_flip=True,
-        vertical_flip=True,
-        brightness_range=(0.8, 1.2),
-        fill_mode='constant'
-    )
-    
-    return datagen.flow(
-        x=images_np,
-        y=labels_np,
-        batch_size=64
-    )
-
-# class ChannelAttention(tf.keras.layers.Layer):
-#     def __init__(self, filters, ratio):
-#         super(ChannelAttention, self).__init__()
-#         self.filters = filters
-#         self.ratio = ratio
-
-#     def build(self, input_shape):
-#         self.shared_layer_one = tf.keras.layers.Dense(
-#             self.filters//self.ratio,
-#             activation='relu', kernel_initializer='he_normal', 
-#             use_bias=True, 
-#             bias_initializer='zeros'
-#         )
-#         self.shared_layer_two = tf.keras.layers.Dense(
-#             self.filters,
-#             kernel_initializer='he_normal',
-#             use_bias=True,
-#             bias_initializer='zeros'
-#         )
-
-#     def call(self, inputs):
-#         # AvgPool
-#         avg_pool = tf.keras.layers.GlobalAveragePooling2D()(inputs)
-#         avg_pool = self.shared_layer_one(avg_pool)
-#         avg_pool = self.shared_layer_two(avg_pool)
-#         # MaxPool
-#         max_pool = tf.keras.layers.GlobalMaxPooling2D()(inputs)
-#         max_pool = tf.keras.layers.Reshape((1,1,self.filters))(max_pool)
-#         max_pool = self.shared_layer_one(max_pool)
-#         max_pool = self.shared_layer_two(max_pool)
-#         attention = tf.keras.layers.Add()([avg_pool,max_pool])
-#         attention = tf.keras.layers.Activation('sigmoid')(attention)
-#         return tf.keras.layers.Multiply()([inputs, attention])
-
-
-# #Code from https://github.com/EscVM/EscVM_YT/blob/master/Notebooks/0%20-%20TF2.X%20Tutorials/tf_2_visual_attention.ipynb
-# class SpatialAttention(tf.keras.layers.Layer):
-#     def __init__(self, kernel_size):
-#         super(SpatialAttention, self).__init__()
-#         self.kernel_size = kernel_size
-
-#     def build(self, input_shape):
-#         self.conv2d = tf.keras.layers.Conv2D(
-#             filters = 1,
-#             kernel_size = self.kernel_size,
-#             strides = 1,
-#             padding = 'same',
-#             activation = 'sigmoid',
-#             kernel_initializer = 'he_normal',
-#             use_bias = False,
-#         )
-
-#     def call(self, inputs):
-#         # AvgPool
-#         avg_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.mean(x, axis=3, keepdims=True))(inputs)
-#         # MaxPool
-#         max_pool = tf.keras.layers.Lambda(lambda x: tf.keras.backend.max(x, axis=3, keepdims=True))(inputs)
-#         attention = tf.keras.layers.Concatenate(axis=3)([avg_pool, max_pool])
-#         attention = self.conv2d(attention)
-#         return tf.keras.layers.multiply([inputs, attention]) 
-    
-    
-# class CBAMAttentionMN(keras.models.Model):
-#     def __init__(self, input_shape):
-#         super(CBAMAttentionMN, self).__init__()
-#         #taking base model from MobileNetv2 and freezing layers
-#         self.baseModel = MobileNetV2(input_shape=input_shape, include_top=False, weights='imagenet')
-#         self.baseModel.trainable = False
-
-#         #attention layers
-#         self.channel_attention = ChannelAttention(1280, 8)
-#         self.spatial_attention = SpatialAttention(7)
-#         # fully connected layers with dropout added
-#         self.flatten = Flatten()
-#         self.dense1 = Dense(256, activation='relu', kernel_regularizer=l2(0.01))
-#         self.dropout = Dropout(0.3)
-#         self.dense2 = Dense(1, activation='sigmoid')
-
-    
-#     def call(self, inputs):
-#         x = self.baseModel(inputs)
-#         x = self.channel_attention(x)
-#         x = self.spatial_attention(x)
-#         x = self.flatten(x)
-#         x = self.dense1(x)
-#         x = self.dropout(x)
-#         output = self.dense2(x)
-#         return output
-
-def proto_dist(x):
-    x = K.l2_normalize(x)
-    pred_dist = tf.reduce_sum(x ** 2, axis=1, keepdims=True)
-    feature_dist = tf.reduce_sum(x ** 2, axis=1, keepdims=True)
-    dot = tf.matmul(pred_dist, tf.transpose(pred_dist))
-    dist = tf.sqrt(pred_dist + tf.transpose(feature_dist) - 2 * dot)
-    return dist 
-
-def label_matrix(x):
-    shape = tf.shape(x)[0]
-    y = tf.transpose(x)
-    matrix = tf.tile(x, (1, shape))
-    matrix2 = tf.tile(y, (shape, 1))
-    comparison_result = tf.not_equal(matrix, matrix2)
-    return tf.cast(comparison_result, tf.float32)
-
-def ProtoLoss(y_true, y_pred):
-    proto_dists = (proto_dist)(y_pred)
-    label_matrixs = (label_matrix)(y_true)
-    distance_matrix = K.abs(proto_dists - label_matrixs)
-    # Compute the loss value
-    loss = K.mean(distance_matrix, axis=-1)
-
-    return loss
-
-
-def create_CNN(base):
-    """
-    Creates a model based on a given base pretrained CNN architecture.
-
-    This function initializes a pretrained CNN without its top layer, appends custom layers on top,
-    and compiles the model with a binary crossentropy loss and adam optimizer. The base model is frozen to
-    prevent its weights from being updated during training.
-
-    :param base: A function reference to a pretrained model class from keras.applications (e.g., MobileNetV2, ResNet50).
-    :return: A compiled keras Model instance ready for training.
-    """
-    base_model = base(input_shape=(224, 224, 3), include_top=False)
-    # base_model.trainable = False  # Freeze the base model
-    
-    # Append custom layers on top of the base model
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    proto = Dense(1024, activation='relu', name='output2')(x)
-    return proto
-
-
-def reduce_tensor(x):
-    print("reduce tensor output", (tf.reduce_mean(x, axis=1)))
-    return tf.reduce_mean(x, axis=1)
-
-def reshape_query(x):
-    print("reshqp query", (tf.reshape(x, [-1, tf.shape(x)[-1]])).shape)
-    return tf.reshape(x, [-1, tf.shape(x)[-1]])
-
-
-def prior_dist(x):
-    sample_center, query_feature = x
-    q2 = tf.reduce_sum(query_feature ** 2, axis=1, keepdims=True)
-    s2 = tf.reduce_sum(sample_center ** 2, axis=1, keepdims=True)
-    qdots = tf.matmul(query_feature, tf.transpose(sample_center))
-    return tf.nn.softmax(-(tf.sqrt(q2 + tf.transpose(s2) - 2 * qdots)))
-
-def create_model():
-    base_model = MobileNetV2(input_shape=(224, 224, 3), include_top=False)
-    model = Sequential()
-    model.add(base_model)
-    model.add(GlobalAveragePooling2D()) 
-    model.add(Dense(1024, activation='relu'))
-    
-
-    # Input samples
-    sample = Input((224, 224, 3))
-    print("sample shape", sample)
-    sample_feature = model(sample)
-    print("sample features shape", sample_feature)
-
-    # Input Queries
-    query = Input((224, 224, 3))
-    print("query shape", query)
-    query_feature = model(query)
-    print("query feature shape", query_feature)    
-    
-
-
-    class_center = Lambda(reduce_tensor, output_shape=(None, ))(sample_feature)
-    query_feature = Lambda(reshape_query, output_shape=(None, 1024))(query_feature)
-    pred = Lambda(prior_dist)([class_center, query_feature])
-    combine = Model([sample, query], pred)
-    combine.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['categorical_accuracy'])
-    return combine
-
+import torch
+from torch import nn, optim
+from torch.utils.data import Dataset, DataLoader
+from torchvision import models, transforms
+from sklearn.model_selection import train_test_split
+from easyfsl.samplers import TaskSampler
+from easyfsl.utils import plot_images, sliding_average
+from tqdm import tqdm
 
 
 ########################################################################################################################
-# NOTE: Template code
-########################################################################################################################
+def augment_data(images, labels, augmentations_per_image):
+    augmented_images = []
+    augmented_labels = []
+    augmentations = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(20),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+        # Add more transformations as needed
+    ])
+    
+    for img, label in zip(images, labels):
+        for _ in range(augmentations_per_image):
+            augmented_img = augmentations(img)
+            augmented_images.append(augmented_img)
+            augmented_labels.append(label)
+    
+    # Don't forget to include the original images too
+    augmented_images.extend(images)
+    augmented_labels.extend(labels)
+    
+    return augmented_images, augmented_labels
+
+class CustomDataset(Dataset):
+    def __init__(self, images, labels, transform=None):
+        self.images = images
+        self.labels = labels
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        label = self.labels[idx]
+        if self.transform:
+            image = self.transform(image)
+        return image, label
+    
+    def get_labels(self):
+        # Return the labels of all samples in the dataset
+        return self.labels
+
+    
+class PrototypicalNetworks(nn.Module):
+    def __init__(self, backbone: nn.Module):
+        super(PrototypicalNetworks, self).__init__()
+        self.backbone = backbone
+
+    def forward(
+        self,
+        support_images: torch.Tensor,
+        support_labels: torch.Tensor,
+        query_images: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Predict query labels using labeled support images.
+        """
+        # Extract the features of support and query images
+        z_support = self.backbone.forward(support_images)
+        z_query = self.backbone.forward(query_images)
+
+        # Infer the number of different classes from the labels of the support set
+        n_way = len(torch.unique(support_labels))
+        # Prototype i is the mean of all instances of features corresponding to labels == i
+        z_proto = torch.cat(
+            [
+                z_support[torch.nonzero(support_labels == label)].mean(0)
+                for label in range(n_way)
+            ]
+        )
+
+        # Compute the euclidean distance from queries to prototypes
+        dists = torch.cdist(z_query, z_proto)
+
+        # And here is the super complicated operation to transform those distances into classification scores!
+        scores = -dists
+        return scores
+
+
+
+        
+        
+    
 
 def parse_args():
     """
@@ -278,27 +123,114 @@ def load_train_resources(resource_dir: str = 'resources') -> Any:
     :param resource_dir: the relative directory from train.py where resources are kept.
     :return: TBD
     """
-    raise RuntimeError(
-        "load_train_resources() not implement. If you have no pre-trained models you can comment this out.")
+    # raise RuntimeError(
+    #     "load_train_resources() not implement. If you have no pre-trained models you can comment this out.")
 
 
 def train(images: [Image], labels: [str], output_dir: str) -> Any:
     """
     Trains a classification model using the training images and corresponding labels.
 
-    :param images: the list of images (PIL Image format).
-    :param labels: the list of training labels (str or 0,1).
-    :param output_dir: the directory to write logs, stats, etc., along the way.
-    :return: model: the trained model.
+    :param images: the list of image (or array data)
+    :param labels: the list of training labels (str or 0,1)
+    :param output_dir: the directory to write logs, stats, etc to along the way
+    :return: model: model file(s) trained.
     """
-    # Convert images and labels to numpy arrays
+    # TODO: Implement your logic to train a problem specific model here
+    # Along the way you might want to save training stats, logs, etc in the output_dir
+    # The output from train can be one or more model files that will be saved in save_model function.
+    print(labels)
+    labels = [1 if label == "Yes" else 0 for label in labels]
+    print(labels)
+
+    augmented_images, augmented_labels = augment_data(images, labels, 10)
+
+    X_train, X_test, y_train, y_test = train_test_split(augmented_images, augmented_labels, test_size=0.2, random_state=88)
     
-    images_np = np.array([img_to_array(image.resize((224, 224))) for image in images])
-    labels_np = np.array(labels).astype(int)
+    N_WAY = 2 # Number of classes in a task
+    N_SHOT = 5 # Number of images per class in the support set
+    N_QUERY = 7 # Number of images per class in the query set
+    N_EVALUATION_TASKS = 100
     
     
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    train_data = CustomDataset(X_train, y_train, transform=transform)
+    test_data = CustomDataset(X_test, y_test, transform=transform)
+    print(test_data)
 
 
+    train_sampler = TaskSampler(
+        train_data,
+        n_way=N_WAY,
+        n_shot=N_SHOT,
+        n_query=N_QUERY,
+        n_tasks=N_EVALUATION_TASKS
+    )
+    
+    train_loader = DataLoader(
+        train_data,
+        batch_sampler=train_sampler,
+        num_workers=12,
+        pin_memory=True,
+        collate_fn=train_sampler.episodic_collate_fn,
+    )
+    
+    convolutional_network = models.resnet18(pretrained=True)
+    convolutional_network.fc = nn.Flatten()
+
+    model = PrototypicalNetworks(convolutional_network)
+    (
+        example_support_images,
+        example_support_labels,
+        example_query_images,
+        example_query_labels,
+        example_class_ids,
+    ) = next(iter(train_loader))
+    model.eval()
+    criterion = nn.functional.binary_cross_entropy
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+
+    def fit(
+        support_images: torch.Tensor,
+        support_labels: torch.Tensor,
+        query_images: torch.Tensor,
+        query_labels: torch.Tensor,
+    ) -> float:
+        optimizer.zero_grad()
+        classification_scores = model(
+            support_images, support_labels, query_images
+        )
+
+        loss = criterion(classification_scores, query_labels)
+        loss.backward()
+        optimizer.step()
+
+        return loss.item()
+    log_update_frequency = 10
+
+    all_loss = []
+    model.train()
+    with tqdm(enumerate(train_loader), total=len(train_loader)) as tqdm_train:
+        for episode_index, (
+            support_images,
+            support_labels,
+            query_images,
+            query_labels,
+            _,
+        ) in tqdm_train:
+            loss_value = fit(support_images, support_labels, query_images, query_labels)
+            all_loss.append(loss_value)
+
+            if episode_index % log_update_frequency == 0:
+                tqdm_train.set_postfix(loss=sliding_average(all_loss, log_update_frequency))
+    
+    return model
 
 
 def main(train_input_dir: str, train_labels_file_name: str, target_column_name: str, train_output_dir: str):
@@ -323,9 +255,7 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
     # load label file
     labels_file_path = os.path.join(train_input_dir, train_labels_file_name)
     df_labels = load_image_labels(labels_file_path)
-
-    # Convert labels value to binary
-    df_labels[target_column_name] = df_labels[target_column_name].map({'Yes': '1', 'No': '0'}) 
+    print(df_labels)
 
     # load in images and labels
     train_images = []
@@ -347,7 +277,6 @@ def main(train_input_dir: str, train_labels_file_name: str, target_column_name: 
             print(f"Error loading {index}: {filename} due to {ex}")
     print(f"Loaded {len(train_labels)} training images and labels")
 
-            
     # Create the output directory and don't error if it already exists.
     os.makedirs(train_output_dir, exist_ok=True)
 
