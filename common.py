@@ -2,7 +2,7 @@ from typing import Any
 
 import pandas as pd
 from PIL import Image
-
+import torch
 import os
 
 ########################################################################################################################
@@ -115,12 +115,11 @@ def save_model(model: Any, target: str, output_dir: str):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Define the model path with the .keras extension
-    # TensorFlow's SavedModel format will be used based on the file extension
-    model_path = os.path.join(output_dir, 'saved_model.keras')
+    # Define the model path with a .pth extension for PyTorch
+    model_path = os.path.join(output_dir, f'model_{target}.pth')
 
-    # Save the model
-    model.save(model_path)
+    # Save the entire model
+    torch.save(model, model_path)
     
     print(f"Model saved to {model_path}")
 
@@ -138,5 +137,6 @@ def load_model(trained_model_dir: str, target_column_name: str) -> Any:
     :param target_column_name: the target value - can be useful to name the model file for the target it is intended for
     :returns: the model
     """
-    # TODO: implement your model loading code here
-    raise RuntimeError("load_model() is not implemented.")
+    model_path = os.path.join(trained_model_dir, f'model_{target_column_name}.pth')
+    model = torch.load(model_path)
+    return model
