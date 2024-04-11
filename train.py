@@ -216,7 +216,7 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     # Defining prototypical parameters
     N_WAY = 2 # Num classes
     N_SHOT = 5 # Images per class
-    N_QUERY = 7 # Num query images
+    N_QUERY = 5 # Num query images
     N_EVALUATION_TASKS = 100
     
     # Pre-processing
@@ -259,6 +259,9 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
         classification_scores = model(
             support_images, support_labels, query_images
         )
+        print("support images shape", support_images.shape)
+        print("support labels shape", support_labels.shape)
+        print("query images shape", query_images.shape)
 
         # Calculate loss 
         loss = criterion(classification_scores, query_labels)
