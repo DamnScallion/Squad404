@@ -10,6 +10,15 @@ import torch
 from common import load_model, load_predict_image_names, load_single_image
 
 
+# Define the transformation
+def transform_image_to_tensor(image: Image) -> torch.Tensor:
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),  # Resize to the input size expected by the model
+        transforms.ToTensor(),  # Convert the image to a tensor
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize with ImageNet stats
+    ])
+    return transform(image)
+
 ########################################################################################################################
 
 def parse_args():
@@ -41,37 +50,20 @@ def predict(model: torch.nn.Module, image: Image) -> str:
     :param image: the image file to predict.
     :return: the label ('Yes' or 'No)
     """
-    # predicted_label = 'No'
-    # # TODO: Implement your logic to generate prediction for an image here.
-    # raise RuntimeError("predict() is not implemented.")
-    # return predicted_label
-    support_images = model.support_images
-    support_labels = model.support_labels
-    
-    support_labels = [1 if label == "Yes" else 0 for label in support_labels]
+    support_images = torch.stack([transform_image_to_tensor(image) for image in model.support_images])
+    support_labels = torch.tensor([1 if label == "Yes" else 0 for label in model.support_labels])
 
-    # # Transform the input image
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),  # Resize to the size expected by the model
-        transforms.ToTensor(),  # Convert the image to a tensor
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize (values from ImageNet)
-    ])
+    # # Apply the transformations to the image
+    image_tensor = transform_image_to_tensor(image).unsqueeze(0) # Add a batch dimension
+    with torch.no_grad():
+        # Forward pass
+        scores = model(support_images, support_labels, image_tensor)
 
-    # transform = transforms.ToTensor()
-    
-    # Apply the transformations to the image
-    image_tensor = transform(image).unsqueeze(0)  # Add a batch dimension
-    
-    # Get distances from the model using the models support images and labels, with the sinle image as the query set
-    score = model(model.support_images, model.support_labels, image_tensor)
-    
-    # COnvert the score to a prediction
-    _, preds = torch.max(score, 1)
-    
-    if preds == 1:
-        return "Yes"
-    else:
-        return "No"
+        # Convert the scores to predictions
+        _, preds = torch.max(scores, 1)
+        predicted_label = 'Yes' if preds.item() == 1 else 'No'
+
+    return predicted_label
 
 
 def main(predict_data_image_dir: str,
