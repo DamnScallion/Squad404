@@ -21,6 +21,8 @@ class Prototypical(nn.Module):
         
         # self.baseCNN = models.mobilenet_v2(pretrained=True)
         self.baseCNN = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
+        self.support_images= []
+        self.support_labels = []
     def forward(
         self,
         support_images: torch.Tensor,
@@ -40,10 +42,10 @@ class Prototypical(nn.Module):
 
         return scores
     
-    def predict_single(self, query_image: torch.Tensor) -> torch.Tensor:
-        query_feature = self.baseCNN(query_image)
-        # Assuming the last element is the logit for the positive class
-        return query_feature[:, -1]  # This assumes that the positive class logit is the last element
+    # def predict_single(self, query_image: torch.Tensor) -> torch.Tensor:
+    #     query_feature = self.baseCNN(query_image)
+    #     # Assuming the last element is the logit for the positive class
+    #     return query_feature[:, -1]  # This assumes that the positive class logit is the last element
 
 ########################################################################################################################
 # Data Loading functions

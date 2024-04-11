@@ -59,33 +59,16 @@ def predict(model: torch.nn.Module, image: Image) -> str:
     # Apply the transformations to the image
     image_tensor = transform(image).unsqueeze(0)  # Add a batch dimension
     
-    # Ensure the model is in evaluation mode
-    model.eval()
-
-    # output = model(image_tensor)
-
-    # print(f"predict output == {output}")
+    # Get distances from the model using the models support images and labels, with the sinle image as the query set
+    score = model(model.support_images, model.support_labels, image_tensor)
     
-    # # Disable gradient computation for inference
-    # with torch.no_grad():
-    #     outputs = model(image_tensor)
-        
-    #     # Assuming the model outputs raw scores (logits) for binary classification
-    #     # Apply sigmoid to convert to probabilities
-    #     probs = torch.sigmoid(outputs.squeeze())
-        
-    #     # Determine the predicted class based on a threshold of 0.5
-    #     predicted_label = 'Yes' if probs.item() > 0.5 else 'No'
-
-    with torch.no_grad():
-        logit = model.predict_single(image_tensor)
-        
-        # Since we are getting a single logit for the positive class, we don't need to squeeze
-        # If your model outputs a single logit directly, you can even remove the indexing in predict_single method
-        prob = torch.sigmoid(logit)
-        predicted_label = 'Yes' if prob.item() > 0.5 else 'No'
+    # COnvert the score to a prediction
+    _, preds = torch.max(score, 1)
     
-    return predicted_label
+    if preds == 1:
+        return "Yes"
+    else:
+        return "No"
 
 
 def main(predict_data_image_dir: str,
