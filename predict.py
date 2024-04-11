@@ -47,29 +47,43 @@ def predict(model: torch.nn.Module, image: Image) -> str:
     # return predicted_label
 
 
-    # Transform the input image
+    # # Transform the input image
     transform = transforms.Compose([
         transforms.Resize((224, 224)),  # Resize to the size expected by the model
         transforms.ToTensor(),  # Convert the image to a tensor
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize (values from ImageNet)
     ])
+
+    # transform = transforms.ToTensor()
     
     # Apply the transformations to the image
     image_tensor = transform(image).unsqueeze(0)  # Add a batch dimension
     
     # Ensure the model is in evaluation mode
     model.eval()
+
+    # output = model(image_tensor)
+
+    # print(f"predict output == {output}")
     
-    # Disable gradient computation for inference
+    # # Disable gradient computation for inference
+    # with torch.no_grad():
+    #     outputs = model(image_tensor)
+        
+    #     # Assuming the model outputs raw scores (logits) for binary classification
+    #     # Apply sigmoid to convert to probabilities
+    #     probs = torch.sigmoid(outputs.squeeze())
+        
+    #     # Determine the predicted class based on a threshold of 0.5
+    #     predicted_label = 'Yes' if probs.item() > 0.5 else 'No'
+
     with torch.no_grad():
-        outputs = model(image_tensor)
+        logit = model.predict_single(image_tensor)
         
-        # Assuming the model outputs raw scores (logits) for binary classification
-        # Apply sigmoid to convert to probabilities
-        probs = torch.sigmoid(outputs.squeeze())
-        
-        # Determine the predicted class based on a threshold of 0.5
-        predicted_label = 'Yes' if probs.item() > 0.5 else 'No'
+        # Since we are getting a single logit for the positive class, we don't need to squeeze
+        # If your model outputs a single logit directly, you can even remove the indexing in predict_single method
+        prob = torch.sigmoid(logit)
+        predicted_label = 'Yes' if prob.item() > 0.5 else 'No'
     
     return predicted_label
 
@@ -115,6 +129,8 @@ def main(predict_data_image_dir: str,
             predictions.append("Error")
 
     df_predictions = pd.DataFrame({'Filenames': image_filenames, target_column_name: predictions})
+
+    os.makedirs(os.path.dirname(predicts_output_csv), exist_ok=True)
 
     # Finally, write out the predictions to CSV
     df_predictions.to_csv(predicts_output_csv, index=False)
