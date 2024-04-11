@@ -5,48 +5,6 @@ from PIL import Image
 import torch
 import os
 
-from torchvision import models
-from torchvision.models import MobileNet_V2_Weights
-from torch import nn
-
-
-# Prototypical network implementation based on https://colab.research.google.com/drive/1TPL2e3v8zcDK00ABqH3R0XXNJtJnLBCd?usp=sharing#scrollTo=UW5Rxifk7Kru
-class Prototypical(nn.Module):
-    #Initialise model with resNet as base CNN and flattening fc layer
-    def __init__(self):
-        super(Prototypical, self).__init__()
-        
-        # Uncomment below to use CBAM attention model
-        # self.baseCNN = CBAMAttentionMN((224, 224))
-        
-        # self.baseCNN = models.mobilenet_v2(pretrained=True)
-        self.baseCNN = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
-        self.support_images= []
-        self.support_labels = []
-    def forward(
-        self,
-        support_images: torch.Tensor,
-        support_labels: torch.Tensor,
-        query_images: torch.Tensor,
-    ) -> torch.Tensor:
-        support_features = self.baseCNN.forward(support_images)
-        query_features = self.baseCNN.forward(query_images)
-
-        # Infer the number of different classes from the labels of the support set
-        num_classes = len(torch.unique(support_labels))
-        # Prototype i is the mean of all instances of features corresponding to labels == i
-        prototype = torch.cat([support_features[torch.nonzero(support_labels == label)].mean(0) for label in range(num_classes)])
-
-        # Compute the euclidean distance from queries to prototypes
-        scores = -(torch.cdist(query_features, prototype))
-
-        return scores
-    
-    # def predict_single(self, query_image: torch.Tensor) -> torch.Tensor:
-    #     query_feature = self.baseCNN(query_image)
-    #     # Assuming the last element is the logit for the positive class
-    #     return query_feature[:, -1]  # This assumes that the positive class logit is the last element
-
 ########################################################################################################################
 # Data Loading functions
 ########################################################################################################################
@@ -161,8 +119,8 @@ def save_model(model: Any, target: str, output_dir: str):
     model_path = os.path.join(output_dir, f'model_{target}.pth')
 
     # Save the model
-    torch.save(model.state_dict(), model_path)
-    # torch.save(model, model_path)
+    torch.save(model, model_path)
+
 
 
 def load_model(trained_model_dir: str, target_column_name: str) -> Any:
@@ -181,6 +139,6 @@ def load_model(trained_model_dir: str, target_column_name: str) -> Any:
     model_path = os.path.join(trained_model_dir, f'model_{target_column_name}.pth')
     print(f"model_path == {model_path}")
 
-    model = Prototypical()
-    model.load_state_dict(torch.load(model_path))
+    model = torch.load(model_path)
+
     return model
