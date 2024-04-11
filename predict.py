@@ -45,7 +45,10 @@ def predict(model: torch.nn.Module, image: Image) -> str:
     # # TODO: Implement your logic to generate prediction for an image here.
     # raise RuntimeError("predict() is not implemented.")
     # return predicted_label
-
+    support_images = model.support_images
+    support_labels = model.support_labels
+    
+    support_labels = [1 if label == "Yes" else 0 for label in support_labels]
 
     # # Transform the input image
     transform = transforms.Compose([
