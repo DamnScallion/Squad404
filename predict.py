@@ -9,9 +9,25 @@ import torch
 
 from common import load_model, load_predict_image_names, load_single_image
 
+########################################################################################################################
+# NOTE: Set the device based on CUDA availability
+########################################################################################################################
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
-# Define the transformation
+
+
+########################################################################################################################
+# NOTE: Helper Function
+########################################################################################################################
 def transform_image_to_tensor(image: Image) -> torch.Tensor:
+    """
+    Transforms an image into a tensor that's ready for model input, performing resizing, conversion to tensor, 
+    and normalization using ImageNet standards.
+
+    :param image: the PIL Image to be transformed.
+    :return: a transformed tensor.
+    """
     transform = transforms.Compose([
         transforms.Resize((224, 224)),  # Resize to the input size expected by the model
         transforms.ToTensor(),  # Convert the image to a tensor
@@ -19,6 +35,10 @@ def transform_image_to_tensor(image: Image) -> torch.Tensor:
     ])
     return transform(image)
 
+
+
+######################################################################################################################
+# NOTE: Template Code
 ########################################################################################################################
 
 def parse_args():
@@ -50,11 +70,13 @@ def predict(model: torch.nn.Module, image: Image) -> str:
     :param image: the image file to predict.
     :return: the label ('Yes' or 'No)
     """
-    support_images = torch.stack([transform_image_to_tensor(image) for image in model.support_images])
-    support_labels = torch.tensor([1 if label == "Yes" else 0 for label in model.support_labels])
+    support_images = torch.stack([transform_image_to_tensor(image) for image in model.support_images]).to(device)
+    support_labels = torch.tensor([1 if label == "Yes" else 0 for label in model.support_labels]).to(device)
 
     # # Apply the transformations to the image
-    image_tensor = transform_image_to_tensor(image).unsqueeze(0) # Add a batch dimension
+    # image_tensor = transform_image_to_tensor(image).unsqueeze(0) # Add a batch dimension
+    image_tensor = transform_image_to_tensor(image).unsqueeze(0).to(device) # Add batch dimension and move to device
+
     with torch.no_grad():
         # Forward pass
         scores = model(support_images, support_labels, image_tensor)
@@ -88,7 +110,8 @@ def main(predict_data_image_dir: str,
     """
 
     # load pre-trained models or resources at this stage.
-    model = load_model(trained_model_dir, target_column_name)
+    # model = load_model(trained_model_dir, target_column_name)
+    model = load_model(trained_model_dir, target_column_name).to(device)
 
     # Load in the image list
     image_list_file = os.path.join(predict_data_image_dir, predict_image_list)
@@ -112,6 +135,8 @@ def main(predict_data_image_dir: str,
 
     # Finally, write out the predictions to CSV
     df_predictions.to_csv(predicts_output_csv, index=False)
+
+    print(f"Predict output has been saved in {predicts_output_csv}\n\n")
 
 
 if __name__ == '__main__':
