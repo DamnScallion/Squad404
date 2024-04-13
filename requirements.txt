@@ -74,6 +74,7 @@ termcolor==2.4.0
 threadpoolctl==3.3.0
 tifffile==2024.2.12
 torch==2.2.2
+torchaudio==2.2.2
 torchvision==0.17.2
 tornado==6.4
 tqdm==4.66.2

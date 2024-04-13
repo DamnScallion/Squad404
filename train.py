@@ -3,7 +3,7 @@ import os
 from typing import Any
 from PIL import Image
 
-from common import load_image_labels, load_single_image, save_model
+from common import load_image_labels, load_single_image, save_model, Prototypical
 
 import torch
 from torch import nn, optim
@@ -16,48 +16,18 @@ from easyfsl.utils import sliding_average
 from tqdm import tqdm
 from sklearn.metrics import f1_score
 import numpy as np
-from torchvision.models import MobileNet_V2_Weights
-
 
 
 ########################################################################################################################
-# NOTE: Model Implementation
+# NOTE: Set the device based on CUDA availability
 ########################################################################################################################
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 
-# Prototypical network implementation based on https://colab.research.google.com/drive/1TPL2e3v8zcDK00ABqH3R0XXNJtJnLBCd?usp=sharing#scrollTo=UW5Rxifk7Kru
-class Prototypical(nn.Module):
-    #Initialise model with resNet as base CNN and flattening fc layer
-    def __init__(self):
-        super(Prototypical, self).__init__()
-        
-        # Uncomment below to use CBAM attention model
-        # self.baseCNN = CBAMAttentionMN((224, 224))
-        
-        # self.baseCNN = models.mobilenet_v2(pretrained=True)
-        self.baseCNN = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
-        self.support_images= []
-        self.support_labels = []
-    def forward(
-        self,
-        support_images: torch.Tensor,
-        support_labels: torch.Tensor,
-        query_images: torch.Tensor,
-    ) -> torch.Tensor:
-        support_features = self.baseCNN.forward(support_images)
-        query_features = self.baseCNN.forward(query_images)
-
-        # Infer the number of different classes from the labels of the support set
-        num_classes = len(torch.unique(support_labels))
-        # Prototype i is the mean of all instances of features corresponding to labels == i
-        prototype = torch.cat([support_features[torch.nonzero(support_labels == label)].mean(0) for label in range(num_classes)])
-
-        # Compute the euclidean distance from queries to prototypes
-        scores = -(torch.cdist(query_features, prototype))
-
-        return scores
-
-
+########################################################################################################################
+# NOTE: Helpr Function
+########################################################################################################################
 
 def augment_data(images, labels, augmentations_per_image):
     augmented_images = []
@@ -100,74 +70,6 @@ class CustomDataset(Dataset):
     def get_labels(self):
         return self.labels
     
-class ChannelAttention(nn.Module):
-    def __init__(self, filters, ratio):
-        super(ChannelAttention, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
-        self.shared_mlp = nn.Sequential(
-            nn.Linear(filters, filters // ratio, bias=False),
-            nn.ReLU(),
-            nn.Linear(filters // ratio, filters, bias=False)
-        )
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, inputs):
-        avg_out = self.shared_mlp(self.avg_pool(inputs).view(inputs.size(0), -1)).view(inputs.size(0), -1, 1, 1)
-        max_out = self.shared_mlp(self.max_pool(inputs).view(inputs.size(0), -1)).view(inputs.size(0), -1, 1, 1)
-        attention = self.sigmoid(avg_out + max_out)
-        return inputs * attention
-
-class SpatialAttention(nn.Module):
-    def __init__(self, kernel_size=7):
-        super(SpatialAttention, self).__init__()
-        assert kernel_size % 2 == 1, "Kernel size must be odd"
-        self.conv2d = nn.Conv2d(2, 1, kernel_size=kernel_size, padding=kernel_size//2, bias=False)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, inputs):
-        avg_out = torch.mean(inputs, dim=1, keepdim=True)
-        max_out, _ = torch.max(inputs, dim=1, keepdim=True)
-        x = torch.cat([avg_out, max_out], dim=1)
-        attention = self.sigmoid(self.conv2d(x))
-        return inputs * attention
-
-class CBAMAttentionMN(nn.Module):
-    def __init__(self, input_shape):
-        super(CBAMAttentionMN, self).__init__()
-        # self.baseModel = models.mobilenet_v2(pretrained=True).features
-        self.baseModel = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1).features
-        self.baseModel.trainable = False
-
-        # Assume input channels to channel attention is 1280 because it's the output of MobileNetV2
-        self.channel_attention = ChannelAttention(filters=1280, ratio=8)
-        self.spatial_attention = SpatialAttention(kernel_size=7)
-
-        self.flatten = nn.Flatten()
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)  # Global Avg Pooling
-        self.dense1 = nn.Linear(1280, 256)  # Adjust depending on the output size after pooling
-        self.dropout = nn.Dropout(0.3)
-        self.dense2 = nn.Linear(256, 1)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, inputs):
-        print("inputs", inputs.shape)
-        x = self.baseModel(inputs)
-        print("x1", x.shape)
-        x = self.channel_attention(x)
-        print("x2", x.shape)
-        x = self.spatial_attention(x)
-        print("x3", x.shape)
-        x = self.global_avg_pool(x)
-        x = self.flatten(x)
-        print("x4", x.shape)
-        x = F.relu(self.dense1(x))
-        print("x5", x.shape)
-        x = self.dropout(x)
-        x = self.dense2(x)
-        output = self.sigmoid(x)
-        return output
-
 
 def episodic_evaluate(model, data_loader, criterion):
     model.eval()
@@ -176,6 +78,11 @@ def episodic_evaluate(model, data_loader, criterion):
 
     with torch.no_grad():
         for _, (support_images, support_labels, query_images, query_labels, _) in enumerate(data_loader):
+            support_images = support_images.to(device)
+            support_labels = support_labels.to(device)
+            query_images = query_images.to(device)
+            query_labels = query_labels.to(device)
+
             # Forward pass through the model
             scores = model(support_images, support_labels, query_images)
 
@@ -276,7 +183,7 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     )
 
     # Initialising model
-    model = Prototypical()
+    model = Prototypical().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
@@ -291,12 +198,7 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
         optimizer.zero_grad()
         
         # Outputs scores (distances) of each query image 
-        classification_scores = model(
-            support_images, support_labels, query_images
-        )
-        print("support images shape", support_images.shape)
-        print("support labels shape", support_labels.shape)
-        print("query images shape", query_images.shape)
+        classification_scores = model(support_images, support_labels, query_images)
 
         # Calculate loss 
         loss = criterion(classification_scores, query_labels)
@@ -326,13 +228,12 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     # This is for showing a progress bar
     with tqdm(enumerate(train_loader), total=len(train_loader)) as tqdm_train:
         # Looping over each episode generated by train loader
-        for episode_index, (
-            support_images,
-            support_labels,
-            query_images,
-            query_labels,
-            _,
-        ) in tqdm_train:
+        for episode_index, (support_images, support_labels, query_images, query_labels, _) in tqdm_train:
+            support_images = support_images.to(device)
+            support_labels = support_labels.to(device)
+            query_images = query_images.to(device)
+            query_labels = query_labels.to(device)
+
             loss_value, f1 = fit(support_images, support_labels, query_images, query_labels)
             all_loss.append(loss_value)
             all_f1.append(f1)
