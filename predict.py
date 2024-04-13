@@ -35,6 +35,25 @@ def transform_image_to_tensor(image: Image) -> torch.Tensor:
     ])
     return transform(image)
 
+def calculate_accuracy(predict_data_image_dir, target_column_name, df_predictions):
+    """
+    Calculate the accuracy of predictions against the ground truth labels.
+
+    :param predict_data_image_dir: Directory containing the ground truth CSV file.
+    :param target_column_name: The name of the prediction column.
+    :param df_predictions: DataFrame containing the prediction results.
+    :return: None
+    """
+    # Read ground truth labels csv
+    ground_truth_path = os.path.join(predict_data_image_dir, f"{target_column_name} - True Labels.csv")
+    df_ground_truth = pd.read_csv(ground_truth_path)
+
+    # Merge predictions with ground truth labels
+    merged_df = pd.merge(df_predictions, df_ground_truth, on='Filename', suffixes=('_pred', '_true'))
+
+    # Calculate and print prediction accuracy
+    accuracy = (merged_df[f'{target_column_name}_pred'] == merged_df[f'{target_column_name}_true']).mean()
+    print(f"{target_column_name} prediction accuracy: {accuracy:.2%}")
 
 
 ######################################################################################################################
@@ -129,7 +148,14 @@ def main(predict_data_image_dir: str,
             print(f"Error generating prediction for {filename} due to {ex}")
             predictions.append("Error")
 
-    df_predictions = pd.DataFrame({'Filenames': image_filenames, target_column_name: predictions})
+    df_predictions = pd.DataFrame({'Filename': image_filenames, target_column_name: predictions})
+
+    ########################################################################################################
+    # NOTE: This line just for caculate prediction accuracy, will remove it before project submission
+    ########################################################################################################
+    # Call the function to calculate accuracy
+    calculate_accuracy(predict_data_image_dir, target_column_name, df_predictions)
+    ########################################################################################################
 
     os.makedirs(os.path.dirname(predicts_output_csv), exist_ok=True)
 
