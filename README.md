@@ -3,6 +3,12 @@ A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 
 &nbsp;
 
+# 🔗Submission Link
+Moodle: https://moodle.telt.unsw.edu.au/mod/assign/view.php?id=6669116
+Berrijam: Check the Outlook email from Berrijam, it contained an invitation to access the Google Drive folder on your @ad.unsw.edu.au or @unsw.edu.au account.
+
+&nbsp;
+
 # 📊Dataset
 Link: https://drive.google.com/drive/folders/1Gqdcd-It2OeAGCFR4U80SJJ7nMBD5kE9
 
@@ -107,7 +113,7 @@ git branch -d BRANCH-NAME
    ```
 2. Then run this command to freeze all virtual environment installed packages:
    ```
-   pip freeze -r requirements.txt
+   pip freeze > requirements.txt
    ```
    Then use the Git tool to commit and push your requirements.txt to our GitHub Repo. So everyone can share the up-to-date packages.
 3. This command can keep all your Python packages up to date in your local virtual environment.
@@ -123,7 +129,7 @@ git branch -d BRANCH-NAME
    ```
    git lfs install
    ```
-3. Track Large Files with Git LFS: Before adding and committing your large files, you need to track all .keras files, you can run:
+3. Track Large Files with Git LFS: Before adding and committing your large files, you need to track all .pth files, you can run:
    ```
    git lfs track "*.pth"
    ```
