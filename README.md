@@ -4,8 +4,8 @@ A competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 &nbsp;
 
 # 🔗Submission Link
-Moodle: https://moodle.telt.unsw.edu.au/mod/assign/view.php?id=6669116
-Berrijam: Check the Outlook email from Berrijam, it contained an invitation to access the Google Drive folder on your @ad.unsw.edu.au or @unsw.edu.au account.
+##### Moodle: https://moodle.telt.unsw.edu.au/mod/assign/view.php?id=6669116
+##### Berrijam: Check the Outlook email from Berrijam, it contained an invitation to access the Google Drive folder on your @ad.unsw.edu.au or @unsw.edu.au account.
 
 &nbsp;
 
