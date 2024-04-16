@@ -8,7 +8,7 @@ import os
 import torch
 from torch import nn
 from torchvision import models
-from torchvision.models import MobileNet_V2_Weights
+from torchvision.models import MobileNet_V2_Weights, ResNet18_Weights
 import torch.nn.functional as F
 
 ########################################################################################################################
@@ -30,10 +30,11 @@ class Prototypical(nn.Module):
         super(Prototypical, self).__init__()
         
         # Uncomment below to use CBAM attention model
-        # self.baseCNN = CBAMAttentionMN((224, 224))
+        self.baseCNN = CBAMAttentionMN((224, 224))
         
         # self.baseCNN = models.mobilenet_v2(pretrained=True)
-        self.baseCNN = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V2)
+        # self.baseCNN = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
+        # self.baseCNN = models.resnet18(weights=ResNet18_Weights.DEFAULT)
         self.support_images= []
         self.support_labels = []
     def forward(
@@ -93,7 +94,7 @@ class CBAMAttentionMN(nn.Module):
     def __init__(self, input_shape):
         super(CBAMAttentionMN, self).__init__()
         # self.baseModel = models.mobilenet_v2(pretrained=True).features
-        self.baseModel = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V2).features
+        self.baseModel = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1).features
         self.baseModel.trainable = False
 
         # Assume input channels to channel attention is 1280 because it's the output of MobileNetV2
@@ -108,18 +109,18 @@ class CBAMAttentionMN(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, inputs):
-        print("inputs", inputs.shape)
+        # print("inputs", inputs.shape)
         x = self.baseModel(inputs)
-        print("x1", x.shape)
+        # print("x1", x.shape)
         x = self.channel_attention(x)
-        print("x2", x.shape)
+        # print("x2", x.shape)
         x = self.spatial_attention(x)
-        print("x3", x.shape)
+        # print("x3", x.shape)
         x = self.global_avg_pool(x)
         x = self.flatten(x)
-        print("x4", x.shape)
+        # print("x4", x.shape)
         x = F.relu(self.dense1(x))
-        print("x5", x.shape)
+        # print("x5", x.shape)
         x = self.dropout(x)
         x = self.dense2(x)
         output = self.sigmoid(x)
