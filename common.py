@@ -8,7 +8,6 @@ import os
 import torch
 from torch import nn
 from torchvision import models
-from torchvision.models import MobileNet_V2_Weights, ResNet18_Weights
 import torch.nn.functional as F
 
 ########################################################################################################################
@@ -25,18 +24,13 @@ print(f"Using device: {device}")
 
 # Prototypical network implementation based on https://colab.research.google.com/drive/1TPL2e3v8zcDK00ABqH3R0XXNJtJnLBCd?usp=sharing#scrollTo=UW5Rxifk7Kru
 class Prototypical(nn.Module):
-    #Initialise model with resNet as base CNN and flattening fc layer
+    #Initialise model with our attention model as base CNN and flattening fc layer
     def __init__(self):
         super(Prototypical, self).__init__()
-        
-        # Uncomment below to use CBAM attention model
         self.baseCNN = CBAMAttentionMN((224, 224))
-        
-        # self.baseCNN = models.mobilenet_v2(pretrained=True)
-        # self.baseCNN = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
-        # self.baseCNN = models.resnet18(weights=ResNet18_Weights.DEFAULT)
         self.support_images= []
         self.support_labels = []
+    
     def forward(
         self,
         support_images: torch.Tensor,
@@ -46,18 +40,16 @@ class Prototypical(nn.Module):
         support_features = self.baseCNN.forward(support_images)
         query_features = self.baseCNN.forward(query_images)
 
-        # Infer the number of different classes from the labels of the support set
         num_classes = len(torch.unique(support_labels))
-        # Prototype i is the mean of all instances of features corresponding to labels == i
         prototype = torch.cat([support_features[torch.nonzero(support_labels == label)].mean(0) for label in range(num_classes)])
 
-        # Compute the euclidean distance from queries to prototypes
+        # Compute the euclidean distance to create prototypes
         scores = -(torch.cdist(query_features, prototype))
 
         return scores
 
 
-    
+# Attention module code based on https://github.com/EscVM/EscVM_YT/blob/master/Notebooks/0%20-%20TF2.X%20Tutorials/tf_2_visual_attention.ipynb
 class ChannelAttention(nn.Module):
     def __init__(self, filters, ratio):
         super(ChannelAttention, self).__init__()
@@ -79,7 +71,6 @@ class ChannelAttention(nn.Module):
 class SpatialAttention(nn.Module):
     def __init__(self, kernel_size=7):
         super(SpatialAttention, self).__init__()
-        assert kernel_size % 2 == 1, "Kernel size must be odd"
         self.conv2d = nn.Conv2d(2, 1, kernel_size=kernel_size, padding=kernel_size//2, bias=False)
         self.sigmoid = nn.Sigmoid()
 
@@ -93,34 +84,40 @@ class SpatialAttention(nn.Module):
 class CBAMAttentionMN(nn.Module):
     def __init__(self, input_shape):
         super(CBAMAttentionMN, self).__init__()
-        # self.baseModel = models.mobilenet_v2(pretrained=True).features
-        self.baseModel = models.mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1).features
-        self.baseModel.trainable = False
+        # Path to the locally saved weights
+        weights_path = 'resources/pretrained/mobilenet_v2-7ebf99e0.pth'
 
-        # Assume input channels to channel attention is 1280 because it's the output of MobileNetV2
-        self.channel_attention = ChannelAttention(filters=1280, ratio=8)
+        # Initialize MobileNetV2 without pre-trained weights
+        model = models.mobilenet_v2(weights=None)
+
+        # Load the weights from a local file instead of using MobileNet_V2_Weights
+        model_weights = torch.load(weights_path, map_location=device)
+        model.load_state_dict(model_weights)
+
+        # We are using only the features of MobileNetV2
+        self.baseModel = model.features
+        
+        # Set the base model layers are not trainable (if needed)
+        # for param in self.baseModel.parameters():
+        #     param.requires_grad = False
+
+        self.channel_attention = ChannelAttention(filters=1280, ratio=16)
         self.spatial_attention = SpatialAttention(kernel_size=7)
 
         self.flatten = nn.Flatten()
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)  # Global Avg Pooling
-        self.dense1 = nn.Linear(1280, 256)  # Adjust depending on the output size after pooling
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.dense1 = nn.Linear(1280, 256)
         self.dropout = nn.Dropout(0.3)
         self.dense2 = nn.Linear(256, 1)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, inputs):
-        # print("inputs", inputs.shape)
         x = self.baseModel(inputs)
-        # print("x1", x.shape)
         x = self.channel_attention(x)
-        # print("x2", x.shape)
         x = self.spatial_attention(x)
-        # print("x3", x.shape)
         x = self.global_avg_pool(x)
         x = self.flatten(x)
-        # print("x4", x.shape)
         x = F.relu(self.dense1(x))
-        # print("x5", x.shape)
         x = self.dropout(x)
         x = self.dense2(x)
         output = self.sigmoid(x)

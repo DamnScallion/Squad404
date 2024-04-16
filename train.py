@@ -7,9 +7,8 @@ from common import load_image_labels, load_single_image, save_model, Prototypica
 
 import torch
 from torch import nn, optim
-import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torchvision import models, transforms
+from torchvision import transforms
 from sklearn.model_selection import train_test_split
 from easyfsl.samplers import TaskSampler
 from easyfsl.utils import sliding_average
@@ -26,12 +25,7 @@ from torchvision.transforms import functional as Fn
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-
-SEED = 42
-torch.manual_seed(SEED)
-np.random.seed(SEED)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(SEED)
+SEED = 88
 
 
 ########################################################################################################################
@@ -39,7 +33,7 @@ if torch.cuda.is_available():
 ########################################################################################################################
 class SaltAndPepperNoise(object):
     """Apply salt and pepper noise to an image."""
-    def __init__(self, amount=0.01):
+    def __init__(self, amount=0.04):
         self.amount = amount
 
     def __call__(self, img):
@@ -64,13 +58,14 @@ class SaltAndPepperNoise(object):
         # Convert numpy array back to PIL Image
         return Fn.to_pil_image(img_array)
 
+
 def augment_data(images, labels, augmentations_per_image):
     augmented_images = []
     augmented_labels = []
     augmentations = transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
-        transforms.RandomRotation(10),
+        transforms.RandomRotation(20),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
         transforms.RandomApply([SaltAndPepperNoise(0.004)], p=0.5), # Applying salt and pepper noise with a 1% amount
     ])
@@ -138,7 +133,6 @@ def episodic_evaluate(model, data_loader, criterion):
     return avg_loss, avg_f1
 
 
-
 def plot_training_metrics(train_loss: list[float], train_f1: list[float], output_dir: str) -> None:
     """
     Plots the training loss and F1 score from a training session on two subplots,
@@ -174,8 +168,7 @@ def plot_training_metrics(train_loss: list[float], train_f1: list[float], output
     print(f"Plot saved to {file_path}")
 
     # Close the plot to free up memory
-    plt.close()
-
+    plt.close()  
 
         
 ########################################################################################################################
@@ -223,16 +216,17 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     # Converting labels to ints
     labels = [1 if label == "Yes" else 0 for label in labels]
 
-    # Augmenting dataset
-    augmented_images, augmented_labels = augment_data(images, labels, 10)
-
     # Splitting the dataset
-    X_train, X_test, y_train, y_test = train_test_split(augmented_images, augmented_labels, test_size=0.2, random_state=SEED)
+    X_train, X_test, y_train, y_test = train_test_split(images, labels, test_size=0.2, random_state=SEED)
+    
+    # Augmenting dataset
+    X_train, y_train = augment_data(images, labels, 15)
+    X_test, y_test = augment_data(images, labels, 10)
     
     # Defining prototypical parameters
     N_WAY = 2 # Num classes
     N_SHOT = 5 # Images per class
-    N_QUERY = 5 # Num query images
+    N_QUERY = 8 # Num query images
     N_EVALUATION_TASKS = 100
     
     # Pre-processing
@@ -254,12 +248,12 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
         train_data,
         batch_sampler=train_sampler,
         collate_fn=train_sampler.episodic_collate_fn,
-        # shuffle=False,
     )
 
     # Initialising model
     model = Prototypical().to(device)
     criterion = nn.CrossEntropyLoss()
+    # optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     # Initialize learning rate scheduler and optimizer
@@ -338,9 +332,7 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     N_QUERY_TEST = 2 # Num query images
     N_EVALUATION_TASKS_TEST = 10
 
-    # NOTE: Make sure Number of test_sampler at least has (N_SHOT_TEST + N_QUERY_TEST) samples
-
-    # Setup for episodic evaluation on test data
+    # test data evaluation
     test_sampler = TaskSampler(test_data, N_WAY_TEST, N_SHOT_TEST, N_QUERY_TEST, N_EVALUATION_TASKS_TEST)
     test_loader = DataLoader(
         test_data,

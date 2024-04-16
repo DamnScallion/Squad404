@@ -93,7 +93,6 @@ def predict(model: torch.nn.Module, image: Image) -> str:
     support_labels = torch.tensor([1 if label == "Yes" else 0 for label in model.support_labels]).to(device)
 
     # # Apply the transformations to the image
-    # image_tensor = transform_image_to_tensor(image).unsqueeze(0) # Add a batch dimension
     image_tensor = transform_image_to_tensor(image).unsqueeze(0).to(device) # Add batch dimension and move to device
 
     with torch.no_grad():
