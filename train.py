@@ -7,15 +7,16 @@ from common import load_image_labels, load_single_image, save_model, Prototypica
 
 import torch
 from torch import nn, optim
-import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torchvision import models, transforms
+from torchvision import transforms
 from sklearn.model_selection import train_test_split
 from easyfsl.samplers import TaskSampler
 from easyfsl.utils import sliding_average
 from tqdm import tqdm
 from sklearn.metrics import f1_score
 import numpy as np
+import matplotlib.pyplot as plt
+from torchvision.transforms import functional as Fn
 
 
 ########################################################################################################################
@@ -24,10 +25,39 @@ import numpy as np
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
+SEED = 88
+
 
 ########################################################################################################################
 # NOTE: Helpr Function
 ########################################################################################################################
+class SaltAndPepperNoise(object):
+    """Apply salt and pepper noise to an image."""
+    def __init__(self, amount=0.04):
+        self.amount = amount
+
+    def __call__(self, img):
+        """
+        Args:
+            img (PIL Image): Image to be transformed.
+
+        Returns:
+            PIL Image: Image with salt and pepper noise applied.
+        """
+        # Convert image to numpy array
+        img_array = np.array(img)
+        
+        # Applying pepper noise, Pepper corresponds to 0
+        mask_pepper = np.random.choice([0, 1], size=img_array.shape[:2], p=[self.amount/2, 1-self.amount/2])
+        img_array[mask_pepper == 0] = 0
+        
+        # Applying salt noise, Salt corresponds to 255
+        mask_salt = np.random.choice([0, 1], size=img_array.shape[:2], p=[self.amount/2, 1-self.amount/2])
+        img_array[mask_salt == 0] = 255
+
+        # Convert numpy array back to PIL Image
+        return Fn.to_pil_image(img_array)
+
 
 def augment_data(images, labels, augmentations_per_image):
     augmented_images = []
@@ -37,6 +67,7 @@ def augment_data(images, labels, augmentations_per_image):
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(20),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+        transforms.RandomApply([SaltAndPepperNoise(0.004)], p=0.5), # Applying salt and pepper noise with a 1% amount
     ])
     
     for img, label in zip(images, labels):
@@ -102,6 +133,42 @@ def episodic_evaluate(model, data_loader, criterion):
     return avg_loss, avg_f1
 
 
+def plot_training_metrics(train_loss: list[float], train_f1: list[float], output_dir: str) -> None:
+    """
+    Plots the training loss and F1 score from a training session on two subplots,
+    saving the resulting figure to the specified output directory.
+
+    :param train_loss: a list of floats, representing the training loss recorded after each batch or epoch.
+    :param train_f1: a list of floats, representing the F1 scores recorded after each batch or epoch.
+    :param output_dir: the directory where the plot image will be saved.
+    """
+    # Creating a figure with two subplots
+    _, axs = plt.subplots(2, 1, figsize=(10, 8))
+
+    # Plotting training loss
+    axs[0].plot(train_loss, label='Training Loss', color='tab:blue', alpha=0.6)
+    axs[0].set_title('Training Loss over Time')
+    axs[0].set_xlabel('Epochs')
+    axs[0].set_ylabel('Loss')
+    axs[0].legend()
+
+    # Plotting F1 score
+    axs[1].plot(train_f1, label='Training F1 Score', color='tab:green', alpha=0.6)
+    axs[1].set_title('Training F1 Score over Time')
+    axs[1].set_xlabel('Epochs')
+    axs[1].set_ylabel('F1 Score')
+    axs[1].legend()
+
+    # Layout adjustment
+    plt.tight_layout()
+
+    # Saving the figure
+    file_path = f"{output_dir}/training_records.png"
+    plt.savefig(file_path)
+    print(f"Plot saved to {file_path}")
+
+    # Close the plot to free up memory
+    plt.close()  
 
         
 ########################################################################################################################
@@ -149,16 +216,17 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     # Converting labels to ints
     labels = [1 if label == "Yes" else 0 for label in labels]
 
-    # Augmenting dataset
-    augmented_images, augmented_labels = augment_data(images, labels, 10)
-
     # Splitting the dataset
-    X_train, X_test, y_train, y_test = train_test_split(augmented_images, augmented_labels, test_size=0.2, random_state=88)
+    X_train, X_test, y_train, y_test = train_test_split(images, labels, test_size=0.2, random_state=SEED)
+    
+    # Augmenting dataset
+    X_train, y_train = augment_data(images, labels, 15)
+    X_test, y_test = augment_data(images, labels, 10)
     
     # Defining prototypical parameters
     N_WAY = 2 # Num classes
     N_SHOT = 5 # Images per class
-    N_QUERY = 5 # Num query images
+    N_QUERY = 8 # Num query images
     N_EVALUATION_TASKS = 100
     
     # Pre-processing
@@ -185,7 +253,11 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
     # Initialising model
     model = Prototypical().to(device)
     criterion = nn.CrossEntropyLoss()
+    # optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    # Initialize learning rate scheduler and optimizer
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
 
     # Training step function
     def fit(
@@ -204,8 +276,15 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
         loss = criterion(classification_scores, query_labels)
         # Compute gradients
         loss.backward()
+
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
         # Update parameters
         optimizer.step()
+
+        # Update the learning rate
+        scheduler.step()
 
         # Convert scores to predictions
         _, preds = torch.max(classification_scores, 1)
@@ -244,15 +323,16 @@ def train(images: [Image], labels: [str], output_dir: str) -> Any:
                     f1=np.mean(all_f1[-log_update_frequency:])
                 )
     
+    # Plot the training metrics
+    plot_training_metrics(all_loss, all_f1, output_dir)
+
     # Defining testing prototypical parameters
     N_WAY_TEST = 2 # Num classes
     N_SHOT_TEST = 2 # Images per class
     N_QUERY_TEST = 2 # Num query images
     N_EVALUATION_TASKS_TEST = 10
 
-    # NOTE: Make sure Number of test_sampler at least has (N_SHOT_TEST + N_QUERY_TEST) samples
-
-    # Setup for episodic evaluation on test data
+    # test data evaluation
     test_sampler = TaskSampler(test_data, N_WAY_TEST, N_SHOT_TEST, N_QUERY_TEST, N_EVALUATION_TASKS_TEST)
     test_loader = DataLoader(
         test_data,
