@@ -115,3 +115,9 @@ dmypy.json
 
 # MacOS .DS_Store ignore
 .DS_Store
+
+# models ignore
+models/
+
+# predictions ignore
+predictions/
