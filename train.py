@@ -33,7 +33,7 @@ SEED = 88
 ########################################################################################################################
 class SaltAndPepperNoise(object):
     """Apply salt and pepper noise to an image."""
-    def __init__(self, amount=0.04):
+    def __init__(self, amount=0.004):
         self.amount = amount
 
     def __call__(self, img):
@@ -67,7 +67,7 @@ def augment_data(images, labels, augmentations_per_image):
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(20),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        transforms.RandomApply([SaltAndPepperNoise(0.004)], p=0.5), # Applying salt and pepper noise with a 1% amount
+        transforms.RandomApply([SaltAndPepperNoise(0.004)], p=0.5), # Applying salt and pepper noise with a 0.4% amount
     ])
     
     for img, label in zip(images, labels):

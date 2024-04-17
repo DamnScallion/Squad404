@@ -6,6 +6,7 @@ import pandas as pd
 from PIL import Image
 from torchvision import transforms
 import torch
+from sklearn.metrics import f1_score
 
 from common import load_model, load_predict_image_names, load_single_image
 
@@ -35,9 +36,31 @@ def transform_image_to_tensor(image: Image) -> torch.Tensor:
     ])
     return transform(image)
 
-def calculate_accuracy(predict_data_image_dir, target_column_name, df_predictions):
+# def calculate_accuracy(predict_data_image_dir, target_column_name, df_predictions):
+#     """
+#     Calculate the accuracy of predictions against the ground truth labels.
+
+#     :param predict_data_image_dir: Directory containing the ground truth CSV file.
+#     :param target_column_name: The name of the prediction column.
+#     :param df_predictions: DataFrame containing the prediction results.
+#     :return: None
+#     """
+#     # Read ground truth labels csv
+#     ground_truth_path = os.path.join(predict_data_image_dir, f"{target_column_name} - True Labels.csv")
+#     df_ground_truth = pd.read_csv(ground_truth_path)
+
+#     # Merge predictions with ground truth labels
+#     merged_df = pd.merge(df_predictions, df_ground_truth, on='Filename', suffixes=('_pred', '_true'))
+
+#     # Calculate and print prediction accuracy
+#     accuracy = (merged_df[f'{target_column_name}_pred'] == merged_df[f'{target_column_name}_true']).mean()
+#     print(f"{target_column_name} prediction accuracy: {accuracy:.2%}")
+
+
+def calculate_acc_and_f1(predict_data_image_dir, target_column_name, df_predictions):
     """
-    Calculate the accuracy of predictions against the ground truth labels.
+    Calculate both the accuracy and the F1 score of predictions against the ground truth labels,
+    and print them in a single line.
 
     :param predict_data_image_dir: Directory containing the ground truth CSV file.
     :param target_column_name: The name of the prediction column.
@@ -51,10 +74,14 @@ def calculate_accuracy(predict_data_image_dir, target_column_name, df_prediction
     # Merge predictions with ground truth labels
     merged_df = pd.merge(df_predictions, df_ground_truth, on='Filename', suffixes=('_pred', '_true'))
 
-    # Calculate and print prediction accuracy
+    # Calculate prediction accuracy
     accuracy = (merged_df[f'{target_column_name}_pred'] == merged_df[f'{target_column_name}_true']).mean()
-    print(f"{target_column_name} prediction accuracy: {accuracy:.2%}")
 
+    # Calculate the overall F1 score
+    f1 = f1_score(merged_df[f'{target_column_name}_true'], merged_df[f'{target_column_name}_pred'], average='binary', pos_label='Yes')
+
+    # Print both metrics in one line
+    print(f"{target_column_name} Prediction Accuracy: {accuracy:.2%}, Overall F1 score: {f1:.2f}")
 
 ######################################################################################################################
 # NOTE: Template Code
@@ -150,10 +177,9 @@ def main(predict_data_image_dir: str,
     df_predictions = pd.DataFrame({'Filename': image_filenames, target_column_name: predictions})
 
     ########################################################################################################
-    # NOTE: This line just for caculate prediction accuracy, will remove it before project submission
+    # NOTE: Call the function to caculate prediction accuracy and overall F1 Score, simulate tutor evaluation
     ########################################################################################################
-    # Call the function to calculate accuracy
-    calculate_accuracy(predict_data_image_dir, target_column_name, df_predictions)
+    calculate_acc_and_f1(predict_data_image_dir, target_column_name, df_predictions)
     ########################################################################################################
 
     os.makedirs(os.path.dirname(predicts_output_csv), exist_ok=True)
