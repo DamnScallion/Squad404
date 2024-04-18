@@ -13,8 +13,8 @@ from common import load_model, load_predict_image_names, load_single_image
 ########################################################################################################################
 # NOTE: Set the device based on CUDA availability
 ########################################################################################################################
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {DEVICE}")
 
 
 
@@ -35,26 +35,6 @@ def transform_image_to_tensor(image: Image) -> torch.Tensor:
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize with ImageNet stats
     ])
     return transform(image)
-
-# def calculate_accuracy(predict_data_image_dir, target_column_name, df_predictions):
-#     """
-#     Calculate the accuracy of predictions against the ground truth labels.
-
-#     :param predict_data_image_dir: Directory containing the ground truth CSV file.
-#     :param target_column_name: The name of the prediction column.
-#     :param df_predictions: DataFrame containing the prediction results.
-#     :return: None
-#     """
-#     # Read ground truth labels csv
-#     ground_truth_path = os.path.join(predict_data_image_dir, f"{target_column_name} - True Labels.csv")
-#     df_ground_truth = pd.read_csv(ground_truth_path)
-
-#     # Merge predictions with ground truth labels
-#     merged_df = pd.merge(df_predictions, df_ground_truth, on='Filename', suffixes=('_pred', '_true'))
-
-#     # Calculate and print prediction accuracy
-#     accuracy = (merged_df[f'{target_column_name}_pred'] == merged_df[f'{target_column_name}_true']).mean()
-#     print(f"{target_column_name} prediction accuracy: {accuracy:.2%}")
 
 
 def calculate_acc_and_f1(predict_data_image_dir, target_column_name, df_predictions):
@@ -116,11 +96,11 @@ def predict(model: torch.nn.Module, image: Image) -> str:
     :param image: the image file to predict.
     :return: the label ('Yes' or 'No)
     """
-    support_images = torch.stack([transform_image_to_tensor(image) for image in model.support_images]).to(device)
-    support_labels = torch.tensor([1 if label == "Yes" else 0 for label in model.support_labels]).to(device)
+    support_images = torch.stack([transform_image_to_tensor(image) for image in model.support_images]).to(DEVICE)
+    support_labels = torch.tensor([1 if label == "Yes" else 0 for label in model.support_labels]).to(DEVICE)
 
     # # Apply the transformations to the image
-    image_tensor = transform_image_to_tensor(image).unsqueeze(0).to(device) # Add batch dimension and move to device
+    image_tensor = transform_image_to_tensor(image).unsqueeze(0).to(DEVICE) # Add batch dimension and move to device
 
     with torch.no_grad():
         # Forward pass
@@ -156,7 +136,7 @@ def main(predict_data_image_dir: str,
 
     # load pre-trained models or resources at this stage.
     # model = load_model(trained_model_dir, target_column_name)
-    model = load_model(trained_model_dir, target_column_name).to(device)
+    model = load_model(trained_model_dir, target_column_name).to(DEVICE)
 
     # Load in the image list
     image_list_file = os.path.join(predict_data_image_dir, predict_image_list)
