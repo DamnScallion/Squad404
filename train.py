@@ -11,7 +11,6 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from sklearn.model_selection import train_test_split
 from easyfsl.samplers import TaskSampler
-from easyfsl.utils import sliding_average
 from tqdm import tqdm
 from sklearn.metrics import f1_score
 import numpy as np
@@ -228,10 +227,6 @@ def run_training_loop(model, train_loader, optimizer, scheduler, criterion, log_
                     loss=np.mean(all_loss[-log_update_frequency:]), 
                     f1=np.mean(all_f1[-log_update_frequency:])
                 )
-                # tqdm_train.set_postfix(
-                #     loss=sliding_average(all_loss, log_update_frequency),
-                #     f1=np.mean(all_f1[-log_update_frequency:])
-                # )
 
     return all_loss, all_f1
 
@@ -320,6 +315,7 @@ def plot_training_metrics(train_loss: list[float], train_f1: list[float], output
 def parse_args():
     """
     Helper function to parse command line arguments
+    
     :return: args object
     """
     # Argument parsing
@@ -343,7 +339,7 @@ def load_train_resources(resource_dir: str = 'resources') -> Any:
     #     "load_train_resources() not implement. If you have no pre-trained models you can comment this out.")
 
 
-def train(images: [Image], labels: [str], output_dir: str) -> Any:
+def train(images: list[Image.Image], labels: list[str], output_dir: str) -> Any:
     """
     Trains a classification model using the training images and corresponding labels.
 
