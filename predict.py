@@ -157,9 +157,9 @@ def main(predict_data_image_dir: str,
     df_predictions = pd.DataFrame({'Filename': image_filenames, target_column_name: predictions})
 
     ########################################################################################################
-    # NOTE: Call the function to caculate prediction accuracy and overall F1 Score, simulate tutor evaluation
+    # NOTE: Simulate tutor evaluation. Call the function to caculate prediction accuracy and overall F1 Score.
     ########################################################################################################
-    calculate_acc_and_f1(predict_data_image_dir, target_column_name, df_predictions)
+    # calculate_acc_and_f1(predict_data_image_dir, target_column_name, df_predictions)
     ########################################################################################################
 
     os.makedirs(os.path.dirname(predicts_output_csv), exist_ok=True)

@@ -202,7 +202,7 @@ def load_image_labels(labels_file_path: str):
     return df
 
 
-def load_predict_image_names(predict_image_list_file: str) -> [str]:
+def load_predict_image_names(predict_image_list_file: str) -> list[str]:
     """
     Reads a text file with one image file name per line and returns a list of files
     :param predict_image_list_file: text file containing the image names
