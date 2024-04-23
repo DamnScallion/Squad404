@@ -159,7 +159,7 @@ def main(predict_data_image_dir: str,
     ########################################################################################################
     # NOTE: Simulate tutor evaluation. Call the function to caculate prediction accuracy and overall F1 Score.
     ########################################################################################################
-    # calculate_acc_and_f1(predict_data_image_dir, target_column_name, df_predictions)
+    calculate_acc_and_f1(predict_data_image_dir, target_column_name, df_predictions)
     ########################################################################################################
 
     os.makedirs(os.path.dirname(predicts_output_csv), exist_ok=True)

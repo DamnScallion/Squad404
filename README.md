@@ -2,13 +2,72 @@
 
 ##### A Machine Learning competition project held by Berrijam Jam 2024 (https://www.berrijam.com/jam)
 
-##### 📊Dataset Link: https://drive.google.com/drive/folders/1Gqdcd-It2OeAGCFR4U80SJJ7nMBD5kE9
-
 &nbsp;
 
 # 🔗Project GitHub Link
 
 ##### https://github.com/DamnScallion/Squad404
+
+&nbsp;
+
+# 📊Model Prediction Evaluation
+
+<table>
+  <tr>
+    <th>Model</th>
+    <th>Dataset</th>
+    <th>F1 score</th>
+    <th>Accuracy</th>
+  </tr>
+  <tr>
+    <td rowspan="3">MobileNetv2 &rarr;<br>CBAM attention &rarr;<br>Prototypical Network</td>
+    <td>Is Epic</td>
+    <td>1</td>
+    <td>100%</td>
+  </tr>
+  <tr>
+    <td>Needs Respray</td>
+    <td>0.91</td>
+    <td>90%</td>
+  </tr>
+  <tr>
+    <td>Is GenAI</td>
+    <td>0.91</td>
+    <td>90%</td>
+  </tr>
+  <tr>
+    <td rowspan="3">MobileNetv2 &rarr;<br>Prototypical Network</td>
+    <td>Is Epic</td>
+    <td>1</td>
+    <td>100%</td>
+  </tr>
+  <tr>
+    <td>Needs Respray</td>
+    <td>0.83</td>
+    <td>80%</td>
+  </tr>
+  <tr>
+    <td>Is GenAI</td>
+    <td>0.75</td>
+    <td>80%</td>
+  </tr>
+  <tr>
+    <td rowspan="3">ResNet18 &rarr;<br>Prototypical Network</td>
+    <td>Is Epic</td>
+    <td>0.91</td>
+    <td>90%</td>
+  </tr>
+  <tr>
+    <td>Needs Respray</td>
+    <td>0.67</td>
+    <td>50%</td>
+  </tr>
+  <tr>
+    <td>Is GenAI</td>
+    <td>0.40</td>
+    <td>40%</td>
+  </tr>
+</table>
 
 &nbsp;
 
